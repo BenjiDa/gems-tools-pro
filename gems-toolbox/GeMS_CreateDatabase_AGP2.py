@@ -10,7 +10,7 @@
 # 19 Dec 2016: Added GeoMaterialsDict table, domains
 # 8 March 2017: Added  ExistenceConfidence, IdentityConfidence, ScientificConfidence domains, definitions, and definitionsource
 # 17 March 2017  Added optional table MiscellaneousMapInformation
-# 30 Oct 2017  Moved CartoRepsAZGS and GeMS_lib.gdb to ../Resources
+# 30 Oct 2017  Moved CartoRepsAZGS and GeMS_lib.gdb to ../gems-resources
 # 4 March 2018  changed to use writeLogfile()
 # 16 May 2019 GeMS_CreateDatabase_Arc10.py Python 2.7 ported to Python 3 to work in ArcGIS Pro 2.1, Evan Thoms	
 
@@ -128,7 +128,9 @@ def addTracking(tfc):
 
 
 def cartoRepsExistAndLayer(fc):
-    crPath = os.path.join(os.path.dirname(sys.argv[0]),'../Resources/CartoRepsAZGS')
+    toolbox_dir = os.path.dirname(__file__)
+    crPath = os.path.join(toolbox_dir, 'gems-resources', 'CartoRepsAZGS')
+    
     hasReps = False
     repLyr = ''
     for repFc in 'ContactsAndFaults','GeologicLines','OrientationPoints':
@@ -274,12 +276,18 @@ I agree -
 
     ### GeoMaterials
     addMsgAndPrint('  Setting up GeoMaterialsDict table and domains...')
+    
     #  Copy GeoMaterials table
-    arcpy.Copy_management(os.path.dirname(sys.argv[0])+'/../Resources/GeMS_lib.gdb/GeoMaterialDict', thisDB+'/GeoMaterialDict')
+    toolbox_dir = os.path.dirname(__file__)
+    geo_mat_table = os.path.join(toolbox_dir, 'gems-resources', 'GeMS_lib.gdb', 'GeoMaterialDict')
+    arcpy.Copy_management(geo_mat_table, os.path.join(thisDB, 'GeoMaterialDict'))
+    
     #   make GeoMaterials domain
     arcpy.TableToDomain_management(thisDB+'/GeoMaterialDict','GeoMaterial','IndentedName',thisDB,'GeoMaterials')
+    
     #   attach it to DMU field GeoMaterial
-    arcpy.AssignDomainToField_management(thisDB+'/DescriptionOfMapUnits','GeoMaterial','GeoMaterials')       
+    arcpy.AssignDomainToField_management(thisDB+'/DescriptionOfMapUnits','GeoMaterial','GeoMaterials')  
+    
     #  Make GeoMaterialConfs domain, attach it to DMU field GeoMaterialConf
     arcpy.CreateDomain_management(thisDB,'GeoMaterialConfidenceValues','','TEXT','CODED')
     for val in GeoMaterialConfidenceValues:

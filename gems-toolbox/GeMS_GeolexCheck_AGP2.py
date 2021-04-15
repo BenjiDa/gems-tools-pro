@@ -363,10 +363,6 @@ if len(sys.argv) == 4:
 else:
     open_xl = True
 
-# units table of geolex db
-this_py = os.path.realpath(__file__)
-geolex_db = os.path.join(os.path.dirname(this_py),'..', 'Resources', 'geolex_units.json')
-
 # set up a pandas data frame
 d={}
 df = pd.DataFrame(columns=['HierarchyKey', 'MapUnit', 'Name', 'Fullname', 'Age', 'Extent', # DMU Contents

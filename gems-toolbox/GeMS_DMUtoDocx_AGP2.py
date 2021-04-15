@@ -166,7 +166,7 @@ else:
 
 arcpy.env.workspace = gdb
 script_parent = Path(sys.argv[0]).parent.parent
-template_path = script_parent.joinpath("Resources", "MSWordDMUtemplate", "DMUtemplate.docx")
+template_path = script_parent.joinpath("gems-resources", "MSWordDMUtemplate", "DMUtemplate.docx")
 document = docx.Document(template_path)
 document._body.clear_content()
 lastParaWasHeading = False

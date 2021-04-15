@@ -120,7 +120,7 @@ def dipNumbers(gdb,mapScaleDenominator):
 
     # INSTALL NEWLY-MADE FEATURE CLASS USING .LYR FILE. SET DATA SOURCE. SET DEFINITION QUERY    
 
-    #make a copy of OrientationPointsLabels.lyrx in \Resources. ArcGIS Pro cannot write to lyr files
+    #make a copy of OrientationPointsLabels.lyrx in \gems-resources. ArcGIS Pro cannot write to lyr files
     newLyr = os.path.join(os.path.dirname(gdb), 'OrientationPointsLabels.lyrx')
     shutil.copy(lyrx_path, newLyr)
 
@@ -158,7 +158,7 @@ gdb =  os.path.dirname(inFds)
 fds = os.path.join(gdb, 'GeologicMap')
 scripts = os.path.dirname(sys.argv[0])
 tools = os.path.dirname(scripts)
-lyrx_path = os.path.join(tools, 'Resources', 'OrientationPointsLabels.lyrx')
+lyrx_path = os.path.join(tools, 'gems-resources', 'OrientationPointsLabels.lyrx')
 
 if os.path.basename(inFds) == 'GeologicMap':
     dipNumbers(gdb ,mapScale)

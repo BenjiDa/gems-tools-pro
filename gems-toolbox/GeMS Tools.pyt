@@ -24,13 +24,12 @@ https://desktop.arcgis.com/en/arcmap/10.3/analyze/creating-tools/defining-parame
 The documentation at the page is good for ArcMap 10.3 and up, so we can't guarantee the tools will work with anything older than that.
 """
 
-import arcpy
-import sys, os, importlib 
+# Example of parameter validation (checking for an active edit session on a gdb) is in RebuildMapUnitPolys
 
-# add the path to the \Scripts folder so tools can be imported as modules
-local_path = os.path.abspath(os.path.dirname(__file__))
-scripts_path = os.path.join(local_path, 'Scripts')
-sys.path.append(scripts_path)
+import arcpy
+import os
+import sys
+import glob
 
 class Toolbox(object):
     def __init__(self):
@@ -41,7 +40,7 @@ class Toolbox(object):
         self.tools = [Deplanarize, CompactAndBackup, AttributeByKeyValues, CreateDatabase, 
                       DocxToDMU, MakePolys, MakeTopology, MapOutline, ProjectCrossSectionData, ProjectPointsToCrossSection, InclinationNumber, SetPlotAtScales, SetSymbols, SetIDvalues, FGDC_1, FGDC_2, FGDC_3, PurgeMetadata, RelationshipClasses,
                       FixStrings, TranslateToShape, SymbolToRGB, TopologyCheck, GeologicNamesCheck,
-                      ValidateDatabase, DMUtoDocx]
+                      ValidateDatabase, DMUtoDocx, RebuildMapUnitPolys]
 
 class AttributeByKeyValues(object):
     """"\Scripts\GeMS_AttributeByKeyValues_AGP2.py"""
@@ -1415,3 +1414,69 @@ class DMUtoDocx(object):
         
         # the script tool has been imported as a module. Now call the main function
         GeMS_DMUtoDocx_AGP2.main(parameter_values)
+        
+class RebuildMapUnitPolys(object):
+    """GeMS_RebuildMapUnits_Arc10.py"""
+    def __init__(self):
+        self.label = u'Rebuild MapUnitPolys'
+        self.canRunInBackground = False
+        self.description = u'Rebuilds MapUnitPolys from edited ContactsAndFaults'
+        self.category = u'Create and Edit'
+        
+    def getParameterInfo(self):
+        # ContactsAndFaults
+        param_1 = arcpy.Parameter()
+        param_1.name = u'ContactsAndFaults'
+        param_1.displayName = u'ContactsAndFaults'
+        param_1.parameterType = 'Required'
+        param_1.direction = 'Input'
+        param_1.datatype = u'GPFeatureLayer'
+        param_1.filter.list = ["Polyline"]
+
+        # MapUnits
+        param_2 = arcpy.Parameter()
+        param_2.name = u'MapUnits'
+        param_2.displayName = u'MapUnits'
+        param_2.parameterType = 'Required'
+        param_2.direction = 'Input'
+        param_2.datatype = u'GPFeatureLayer'
+        param_2.filter.list = ["Polygon"]
+
+        # MapUnit_label_points
+        param_3 = arcpy.Parameter()
+        param_3.name = u'MapUnit_label_points'
+        param_3.displayName = u'MapUnit label points'
+        param_3.parameterType = 'Optional'
+        param_3.direction = 'Input'
+        param_3.datatype = u'GPFeatureLayer'
+        param_3.filter.list = ["Point"]
+
+        # save_copy_of_polygons_
+        param_4 = arcpy.Parameter()
+        param_4.name = u'save_copy_of_polygons_'
+        param_4.displayName = u'save copy of polygons?'
+        param_4.parameterType = 'Optional'
+        param_4.direction = 'Input'
+        param_4.datatype = u'Boolean'
+
+        return [param_1, param_2, param_3, param_4]
+             
+    def updateMessages(self, parameters):
+        # with selection of mapunitpolys, is there an editing lock on the gdb?
+        # won't be able to delete the feature class if there is is
+        if parameters[1].value:
+            ws_path = parameters[1].value.workspacePath
+            if glob.glob(os.path.join(ws_path, '*.ed.lock')):
+                parameters[1].setErrorMessage("Save edits and close edit session first!")
+        
+        
+    def execute(self, parameters, messages):
+        # import and reload the tool script to get the latest version; if making edits to the tool script
+        import GeMS_RebuildMapUnits_Arc10
+        reload(GeMS_RebuildMapUnits_Arc10)
+        
+        # construct a list of parameter.valueAsText strings to send to the tool
+        parameter_values = [parameter.valueAsText for parameter in parameters]
+        
+        # the script tool has been imported as a module. Now call the main function
+        GeMS_RebuildMapUnits_Arc10.main(parameter_values) 

@@ -24,7 +24,7 @@ unrecognizedTypes = []
 script_path = os.path.abspath(sys.argv[0])
 script_folder = os.path.dirname(script_path)
 tbx_folder = os.path.dirname(script_folder)
-dictionaryFile = os.path.join(tbx_folder, 'Resources', 'Type-FgdcSymbol.txt')
+dictionaryFile = os.path.join(tbx_folder, 'gems-resources', 'Type-FgdcSymbol.txt')
 
 debug1 = False
 

@@ -855,8 +855,8 @@ refreshGeoMaterialDict = sys.argv[3]
 skipTopology = sys.argv[4]
 deleteExtraGlossaryDataSources = sys.argv[5]
 
-refgmd = os.path.join(os.path.dirname(sys.argv[0]), '..', 'Resources', 'GeMS_lib.gdb', 'GeoMaterialDict')
-mp_path = os.path.join(os.path.dirname(sys.argv[0]), '..', 'Resources', 'mp.exe')
+refgmd = os.path.join(os.path.dirname(__file__), 'gems-resources', 'GeMS_lib.gdb', 'GeoMaterialDict')
+mp_path = os.path.join(os.path.dirname(__file__), 'gems-resources', 'mp.exe')
 
 ##validate inputs
 

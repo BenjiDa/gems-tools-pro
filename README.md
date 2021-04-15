@@ -4,14 +4,17 @@
 
 # GeMS Tools for ArcGIS Pro
 
-This repository contains an ArcGIS toolbox of Python 3 geoprocessing tools for creating, manipulating, and validating [GeMS](https://ngmdb.usgs.gov/Info/standards/GeMS/)-style geologic map databases for use in ArcGIS Pro. Note that some files previously distributed in the Resources folder have been moved to a separate repository called [gems-resources.](https://github.com/usgs/gems-resources)
+## This is a beta release! Download from the Code button, not the 'latest release' link.
+## Until posted as main release, all tools will report that they are not the most recent version.
+
+This repository contains an ArcGIS python toolbox of Python 3 geoprocessing tools for creating, manipulating, and validating [GeMS](https://ngmdb.usgs.gov/Info/standards/GeMS/)-style geologic map databases for use in ArcGIS Pro. Note that some files previously distributed in the Resources folder have been moved to a separate repository called [gems-resources.](https://github.com/usgs/gems-resources)
 
 If you are looking for tools that work in ArcMap using Python 2.7, go to [gems-tools-arcmap](https://github.com/usgs/gems-tools-arcmap)
 
 ## Installation
 
 * Download the [latest release](https://github.com/usgs/gems-tools-pro/releases/latest).
-* Unzip the file to a folder of your choice. This will extract a single folder named `gems-tools-pro-` followed by the version number (e.g., `gems-tools-pro-2.1`). 
+* Unzip the file to a folder of your choice. This will extract a single folder named `gems-tools-pro-` followed by the version number (e.g., `gems-tools-pro-2.1`).
 * Open ArcGIS Pro and go to either the Contents or Catalog pane.
 * Under Project, right-click on Folders to add a folder connection. Navigate to the toolbox folder.
 * Note that this only saves the folder connection with the current project file. If you want to have the toolbox handy for any project that you open up,
