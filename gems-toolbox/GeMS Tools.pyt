@@ -27,6 +27,7 @@ The documentation at the page is good for ArcMap 10.3 and up, so we can't guaran
 # Example of parameter validation (checking for an active edit session on a gdb) is in RebuildMapUnitPolys
 
 import arcpy
+import importlib
 import os
 import sys
 import glob
@@ -80,7 +81,7 @@ class AttributeByKeyValues(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_AttributeByKeyValues_AGP2
-        reload(GeMS_AttributeByKeyValues_AGP2)
+        importlib.reload(GeMS_AttributeByKeyValues_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -181,7 +182,7 @@ class CreateDatabase(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_CreateDatabase_AGP2
-        reload(GeMS_CreateDatabase_AGP2)
+        importlib.reload(GeMS_CreateDatabase_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -219,7 +220,7 @@ class DocxToDMU(object):
     def execute(self, parameters, messages): 
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_DocxToDMU_AGP2
-        reload(GeMS_DocxToDMU_AGP2)
+        importlib.reload(GeMS_DocxToDMU_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -257,7 +258,7 @@ class CompactAndBackup(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_CompactAndBackup_AGP2
-        reload(GeMS_CompactAndBackup_AGP2)
+        importlib.reload(GeMS_CompactAndBackup_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -287,7 +288,7 @@ class Deplanarize(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_Deplanarize_AGP2
-        reload(GeMS_Deplanarize_AGP2)
+        importlib.reload(GeMS_Deplanarize_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -342,7 +343,7 @@ class MakePolys(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_MakePolys3_AGP2
-        reload(GeMS_MakePolys3_AGP2)
+        importlib.reload(GeMS_MakePolys3_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -381,7 +382,7 @@ class MakeTopology(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_MakeTopology_AGP2
-        reload(GeMS_MakeTopology_AGP2)
+        importlib.reload(GeMS_MakeTopology_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -479,7 +480,7 @@ class MapOutline(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import mapOutline_AGP2
-        reload(mapOutline_AGP2)
+        importlib.reload(mapOutline_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -612,7 +613,7 @@ class ProjectCrossSectionData(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_ProjectCrossSectionData_AGP2
-        reload(GeMS_ProjectCrossSectionData_AGP2)
+        importlib.reload(GeMS_ProjectCrossSectionData_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -715,7 +716,7 @@ class ProjectPointsToCrossSection(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_ProjectPtsToCrossSection_AGP2
-        reload(GeMS_ProjectPtsToCrossSection_AGP2)
+        importlib.reload(GeMS_ProjectPtsToCrossSection_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -753,7 +754,7 @@ class InclinationNumber(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_InclinationNumbers_AGP2
-        reload(GeMS_InclinationNumbers_AGP2)
+        importlib.reload(GeMS_InclinationNumbers_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -801,7 +802,7 @@ class SetPlotAtScales(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_SetPlotAtScales_AGP2
-        reload(GeMS_SetPlotAtScales_AGP2)
+        importlib.reload(GeMS_SetPlotAtScales_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -892,7 +893,7 @@ class SetSymbols(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_SetSymbols_AGP2
-        reload(GeMS_SetSymbols_AGP2)
+        importlib.reload(GeMS_SetSymbols_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -940,7 +941,7 @@ class SetIDvalues(object):
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_reID_AGP2
-        reload(GeMS_reID_AGP2)
+        importlib.reload(GeMS_reID_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
@@ -968,7 +969,7 @@ class FGDC_1(object):
 
     def execute(self, parameters, messages):
         import GeMS_FGDC1_AGP2
-        reload(GeMS_FGDC1_AGP2)
+        importlib.reload(GeMS_FGDC1_AGP2)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1011,7 +1012,7 @@ class FGDC_2(object):
 
     def execute(self, parameters, messages):
         import GeMS_FGDC2_AGP2
-        reload(GeMS_FGDC2_AGP2)
+        importlib.reload(GeMS_FGDC2_AGP2)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1046,7 +1047,7 @@ class FGDC_3(object):
 
     def execute(self, parameters, messages):
         import GeMS_FGDC3_AGP2
-        reload(GeMS_FGDC3_AGP2)
+        importlib.reload(GeMS_FGDC3_AGP2)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1082,7 +1083,7 @@ class PurgeMetadata(object):
      
     def execute(self, parameters, messages):
         import GeMS_PurgeMetadata_AGP2
-        reload(GeMS_PurgeMetadata_AGP2)
+        importlib.reload(GeMS_PurgeMetadata_AGP2)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1111,7 +1112,7 @@ class RelationshipClasses(object):
         
     def execute(self, parameters, messages):
         import GeMS_RelationshipClasses1_AGP2
-        reload(GeMS_RelationshipClasses1_AGP2)
+        importlib.reload(GeMS_RelationshipClasses1_AGP2)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1139,7 +1140,7 @@ class FixStrings(object):
         
     def execute(self, parameters, messages):
         import FixStrings
-        reload(FixStrings)
+        importlib.reload(FixStrings)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1175,7 +1176,7 @@ class TranslateToShape(object):
         
     def execute(self, parameters, messages):
         import GeMS_TranslateToShape_AGP2
-        reload(GeMS_TranslateToShape_AGP2)
+        importlib.reload(GeMS_TranslateToShape_AGP2)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1203,7 +1204,7 @@ class SymbolToRGB(object):
 
     def execute(self, parameters, messages):
         import GeMS_WPGCMYK_RGB
-        reload(GeMS_WPGCMYK_RGB)
+        importlib.reload(GeMS_WPGCMYK_RGB)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1238,7 +1239,7 @@ class TopologyCheck(object):
 
     def execute(self, parameters, messages):
         import GeMS_TopologyCheck_AGP2
-        reload(GeMS_TopologyCheck_AGP2)
+        importlib.reload(GeMS_TopologyCheck_AGP2)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1283,7 +1284,7 @@ class GeologicNamesCheck(object):
         
     def execute(self, parameters, messages):
         import GeologicNamesCheck
-        reload(GeologicNamesCheck)
+        importlib.reload(GeologicNamesCheck)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1346,7 +1347,7 @@ class ValidateDatabase(object):
         
     def execute(self, parameters, messages):
         import ValidateDatabase
-        reload(ValidateDatabase)
+        importlib.reload(ValidateDatabase)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1408,7 +1409,7 @@ class DMUtoDocx(object):
         
     def execute(self, parameters, messages):
         import GeMS_DMUtoDocx_AGP2
-        reload(GeMS_DMUtoDocx_AGP2)
+        importlib.reload(GeMS_DMUtoDocx_AGP2)
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
@@ -1465,18 +1466,19 @@ class RebuildMapUnitPolys(object):
         # with selection of mapunitpolys, is there an editing lock on the gdb?
         # won't be able to delete the feature class if there is is
         if parameters[1].value:
-            ws_path = parameters[1].value.workspacePath
-            if glob.glob(os.path.join(ws_path, '*.ed.lock')):
-                parameters[1].setErrorMessage("Save edits and close edit session first!")
+            con_props = parameters[1].value.connectionProperties
+            db_path = con_props['source']['connection_info']['database']
+            if glob.glob(os.path.join(db_path, '*.ed.lock')):
+                parameters[1].setErrorMessage("Save or discard edits first!")
         
         
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
-        import GeMS_RebuildMapUnits_Arc10
-        reload(GeMS_RebuildMapUnits_Arc10)
+        import GeMS_RebuildMapUnitPolys_AGP2
+        importlib.reload(GeMS_RebuildMapUnitPolys_AGP2)
         
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
         # the script tool has been imported as a module. Now call the main function
-        GeMS_RebuildMapUnits_Arc10.main(parameter_values) 
+        GeMS_RebuildMapUnitPolys_AGP2.main(parameter_values) 
