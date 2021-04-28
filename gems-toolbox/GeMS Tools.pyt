@@ -31,6 +31,7 @@ import importlib
 import os
 import sys
 import glob
+from GeMS_utilityFunctions import *
 
 class Toolbox(object):
     def __init__(self):
@@ -1468,7 +1469,8 @@ class RebuildMapUnitPolys(object):
         if parameters[1].value:
             con_props = parameters[1].value.connectionProperties
             db_path = con_props['source']['connection_info']['database']
-            if glob.glob(os.path.join(db_path, '*.ed.lock')):
+            if editSessionActive(db_path):
+            #if glob.glob(os.path.join(db_path, '*.ed.lock')):
                 parameters[1].setErrorMessage("Save or discard edits first!")
         
         
