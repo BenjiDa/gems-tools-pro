@@ -23,6 +23,7 @@
 # 23 December 2020: Changed how MapUnitPoints feature class is created, so that it follows definition in GeMS_Definitions.py - RH                                                                                                                          
 
 import arcpy, sys, os
+import re
 from pathlib import Path
 from GeMS_Definition import tableDict, GeoMaterialConfidenceValues, DefaultExIDConfidenceValues, IDLength
 from GeMS_utilityFunctions import *
@@ -45,18 +46,18 @@ transDict =     { 'String': 'TEXT',
                   'Date'  : 'DATE'  }
                   
 # set up the parameter variables as global so they can be accessed throughout the script
-outputDir: str
-thisDB: str
-coordSystem: str
-OptionalElements = []
-nCrossSections: int
-trackEdits = False
-addLTYPE = False
-addConfs = False
+
+def eval_bool(param):
+    '''Return a boolean for various possibilities of boolean-like values'''
+    return_bool = False
+    if param in [1, True, '1', 'yes', 'Yes', 'true', 'True']:
+        return_bool = True
+ 
+    return return_bool
 
 def addMsgAndPrint(msg, severity=0): 
     # prints msg to screen and adds msg to the geoprocessor (in case this is run as a tool) 
-    # print(msg 
+    print(msg)
     try: 
         for string in msg.split('\n'): 
             # Add appropriate geoprocessing message 
@@ -86,10 +87,9 @@ def createFeatureClass(gdb, featureDataSet, featureClass, shapeType, fieldDefs):
             except:
                 addMsgAndPrint(f'Failed to add field {fDef[0]} to feature class {featureClass}')
                 addMsgAndPrint(arcpy.GetMessages(2))
-    except Exception as error:
+    except :
         addMsgAndPrint(arcpy.GetMessages())
         addMsgAndPrint(f'Failed to create feature class {featureClass} in dataset {featureDataSet}')
-        arcpy.AddMessage(error)
         
 def addTracking(tfc):
     if arcpy.Exists(tfc):
@@ -112,7 +112,7 @@ def rename_field(defs, start_name, end_name):
     arcpy.AddMessage(f_list)
     return f_list                                                   
 
-def main(thisDB, coordSystem, nCrossSections):
+def main(thisDB, coordSystem, OptionalElements, nCrossSections, trackEdits, addLTYPE, addConfs):
     # create feature dataset GeologicMap
     addMsgAndPrint('  Creating feature dataset GeologicMap...')
     try:
@@ -129,7 +129,7 @@ def main(thisDB, coordSystem, nCrossSections):
     for featureClass in featureClasses:
         fieldDefs = tableDict[featureClass]
         if addLTYPE and fc != 'DataSourcePolys':
-            fieldDefs.append(['PTYPE', 'String', 'NullsOK', 50])
+            fieldDefs.append(['PTYPE', 'String', 'NullsOK', 200])
         createFeatureClass(thisDB, 'GeologicMap', featureClass, 'POLYGON', fieldDefs)
             
     # line feature classes
@@ -141,7 +141,7 @@ def main(thisDB, coordSystem, nCrossSections):
     for featureClass in featureClasses:
         fieldDefs = tableDict[featureClass]
         if featureClass in ['ContactsAndFaults', 'GeologicLines'] and addLTYPE:
-            fieldDefs.append(['LTYPE', 'String', 'NullsOK', 50])
+            fieldDefs.append(['LTYPE', 'String', 'NullsOK', 200])
         createFeatureClass(thisDB, 'GeologicMap', featureClass, 'POLYLINE', fieldDefs)
 
     # point feature classes
@@ -287,7 +287,7 @@ I agree -
         # add definitionsource to DataSources
         addMsgAndPrint('    Adding definition source to DataSources')        
         ## create insert cursor on DataSources
-        cursor = arcpy.da.InsertCursor('DataSources', ['DataSources_ID', 'Source', 'URL'])
+        cursor = arcpy.da.InsertCursor(str(thisDB / 'DataSources'), ['DataSources_ID', 'Source', 'URL'])
         cursor.insertRow(('FGDC-STD-013-2006', 'Federal Geographic Data Committee [prepared for the Federal Geographic Data Committee by the U.S. Geological Survey], 2006, FGDC Digital Cartographic Standard for Geologic Map Symbolization: Reston, Va., Federal Geographic Data Committee Document Number FGDC-STD-013-2006, 290 p., 2 plates.','https://ngmdb.usgs.gov/fgdc_gds/geolsymstd.php'))
         del cursor 
 
@@ -331,23 +331,30 @@ def parse_parameters(params):
     '''Usage:
        GeMS_CreateDatabase_Arc10.1.py [directory] [geodatabaseName] [coordSystem]
                     [OptionalElements] [#XSections] [AddEditTracking] [AddRepresentations] [AddLTYPE]
-       [directory] is existing directory in which new geodatabaseName is to 
-          be created, use # for current directory
-       [geodatabaseName] is name of gdb to be created, with extension
-          .gdb causes a file geodatabase to be created
-          .mdb causes a personal geodatabase to be created
-       [coordSystem] is a fully-specified ArcGIS coordinate system
-       [OptionalElements] is either # or a semicolon-delimited string specifying
-          which non-required elements should be created (e.g.,
-          OrientationPoints;CartographicLines;RepurposedSymbols )
+       [directory] Name of a directory. Must exist and be writable.
+       [geodatabaseName] Name of gdb to be created, with or without .gdb extension.
+       [coordSystem] May select an ESRI projection file, import a spatial reference from an existing dataset, or 
+          define a new spatial reference system from scratch.
+       [OptionalElements] List of optional feature classes to add to GDB, e.g.,
+          [OrientationPoints, CartographicLines, RepurposedSymbols]. May be empty.
        [#XSections] is an integer (0, 1, 2, ...) specifying the intended number of
           cross-sections
-       [AddEditTracking] is either true or false (default is true). Parameter is ignored if
-          ArcGIS version is less than 10.1
-       [AddLTYPE] is either true or false (default is false). If true, add LTYPE field
-          to feature classes ContactsAndFaults and GeologicLines, add PTTYPE field
-          to feature class OrientationData, and add PTTYPE field to MapUnitLabelPoints    
+       [AddEditTracking] Enables edit tracking on all feature classes. Adds fields created_user, 
+          created_date, last_edited_user, and last_edited_date. Dates are recorded in database (local) time. 
+          Default is checked. This parameter is ignored if the installed version of ArcGIS is less than 10.1.
+       [AddLTYPE] If true, add LTYPE field to feature classes ContactsAndFaults and GeologicLines, add PTTYPE field
+          to feature class OrientationData, and add PTTYPE field to MapUnitLabelPoints 
+       [AddCONF] If true: 1) Attaches standard values of "certain" and "questionable" as a coded-value domain to 
+          all ExistenceConfidence, IdentityConfidence, and ScientificConfidence fields. 2) Adds definitions and 
+          definition source for "certain" and "questionable" to the Glossary table. 3) Adds the definition source 
+          (FGDC-STD-013-2006) to the DataSources table.
+
+        Boolean parameters may be set with 1, "1", "0" "true", "false",True, "yes", "Yes",  
     '''
+
+    trackEdits = False
+    addLTYPE = True
+    addConfs = True
     
     addMsgAndPrint('Starting script')
     addMsgAndPrint(versionString)
@@ -357,52 +364,35 @@ def parse_parameters(params):
         outputDir = os.getcwd()
     outputDir = Path(outputDir) 
     
-    thisDB = params[1]
-    if not thisDB.endswith('.gdb'):
-        thisDB = f'{thisDB}.gdb'
+    db_name = params[1]
+    if not db_name.endswith('.gdb'):
+        db_name = f'{db_name}.gdb'
 
     coordSystem = params[2]
 
-    if params[3] == '#' or params[3] is None:
-        OptionalElements = []
-    else:
-        OptionalElements = params[3].split(';')
-    # if debug:
-        # addMsgAndPrint(f'Optional elements = {OptionalElements}')
-    
+    if type(params[3]) == list:
+        OptionalElements = params[3]
+    elif type(params[3]) == str:
+        if (params[3]) == "#" or (params[3]) == "":
+            OptionalElements = []
+        else:
+            OptionalElements = re.split(r"[-;,.\s]\s*", params[3])
+            
     nCrossSections = int(params[4])
 
-    try:
-        if params[5] == 'true':
-            trackEdits = True
-        else:
-            trackEdits = False
-    except:
-        trackEdits = False
-        
+    trackEdits = eval_bool(params[5])
+  
     if arcpy.GetInstallInfo()['Version'] < '10.1':
         trackEdits = False
-        
-    try:
-        if params[6] == 'true':
-            addLTYPE = True
-        else:
-            addLTYPE = False
-    except:
-        addLTYPE = False
-        
-    try:
-        if params[7] == 'true':
-            addConfs = True
-        else:
-            addConfs = False
-    except:
-        addConfs = False
-        
+    
+    addLTYPE = eval_bool(params[6])
+   
+    addConfs = eval_bool(params[7])
+ 
     # create gdb in output directory and run main routine
-    if createDatabase(outputDir, thisDB):
-        thisDB = Path(outputDir) / thisDB
-        main(thisDB, coordSystem, nCrossSections)
+    if createDatabase(outputDir, db_name):
+        thisDB = Path(outputDir) / db_name
+        main(thisDB, coordSystem, OptionalElements, nCrossSections, trackEdits, addLTYPE, addConfs)
 
     # try to write a readme within the .gdb
     if str(thisDB).endswith('.gdb'):
@@ -410,7 +400,7 @@ def parse_parameters(params):
             writeLogfile(str(thisDB), f'Geodatabase created by {versionString}')
         except:
             addMsgAndPrint(f'Failed to write to {str(thisDB)}/00log.txt')
-
+    
 #########################################
 # if this script is being called from the command line, __name__ gets set to '__main__' and the parameters
 # are accessed through sys.argv (although first we check to see if the right number have been supplied and
