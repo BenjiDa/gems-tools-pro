@@ -22,20 +22,19 @@
 # Edits 10/8/20 to update to Ralph's latest changes (above), Evan Thoms
 # 23 December 2020: Changed how MapUnitPoints feature class is created, so that it follows definition in GeMS_Definitions.py - RH                                                                                                                          
 
-import arcpy, sys, os, os.path
+import arcpy, sys, os
+from pathlib import Path
 from GeMS_Definition import tableDict, GeoMaterialConfidenceValues, DefaultExIDConfidenceValues, IDLength
 from GeMS_utilityFunctions import *
 import copy       
 
-versionString = 'GeMS_CreateDatabase_AGP2.py, version of 2 February 2021'
+versionString = 'GeMS_CreateDatabase_AGP2.py, version of 7 October 2021'
 rawurl = 'https://raw.githubusercontent.com/usgs/gems-tools-pro/master/Scripts/GeMS_CreateDatabase_AGP2.py'
 checkVersion(versionString, rawurl, 'gems-tools-pro')
 
 debug = True
 
 default = '#'
-
-#cartoReps = False # False if cartographic representations will not be used
 
 transDict =     { 'String': 'TEXT',
                   'Single': 'FLOAT',
@@ -44,46 +43,20 @@ transDict =     { 'String': 'TEXT',
                   'NullsOK':'NULLABLE',
                   'Optional':'NULLABLE',                                        
                   'Date'  : 'DATE'  }
-
-usage = """Usage:
-   systemprompt> GeMS_CreateDatabase_Arc10.1.py <directory> <geodatabaseName> <coordSystem>
-                <OptionalElements> <#XSections> <AddEditTracking> <AddRepresentations> <AddLTYPE>
-   <directory> is existing directory in which new geodatabaseName is to 
-      be created, use # for current directory
-   <geodatabaseName> is name of gdb to be created, with extension
-      .gdb causes a file geodatabase to be created
-      .mdb causes a personal geodatabase to be created
-   <coordSystem> is a fully-specified ArcGIS coordinate system
-   <OptionalElements> is either # or a semicolon-delimited string specifying
-      which non-required elements should be created (e.g.,
-      OrientationPoints;CartographicLines;RepurposedSymbols )
-   <#XSections> is an integer (0, 1, 2, ...) specifying the intended number of
-      cross-sections
-   <AddEditTracking> is either true or false (default is true). Parameter is ignored if
-      ArcGIS version is less than 10.1
-   <AddRepresentations> is either true or false (default is false). If true, add
-      fields for Cartographic representions to all feature classes
-   <AddLTYPE> is either true or false (default is false). If true, add LTYPE field
-      to feature classes ContactsAndFaults and GeologicLines, add PTTYPE field
-      to feature class OrientationData, and add PTTYPE field to MapUnitLabelPoints    
-
-  Then, in ArcCatalog:
-  * If you use the CorrelationOfMapUnits feature data set, note that you will 
-    have to manually create the annotation feature class CMUText and add field 
-    ParagraphStyle. (I haven't yet found a way to script the creation of an 
-    annotation feature class.)
-  * If there will be non-standard point feature classes (photos, mineral 
-    occurrences, etc.), copy/paste/rename feature class GenericPoint or 
-    GenericSample, as appropriate, rename the _ID field, and add necessary
-    fields to the new feature class.
-  * Load data, if data already are in GIS form. 
-  Edit data as needed.
-
-"""
+                  
+# set up the parameter variables as global so they can be accessed throughout the script
+outputDir: str
+thisDB: str
+coordSystem: str
+OptionalElements = []
+nCrossSections: int
+trackEdits = False
+addLTYPE = False
+addConfs = False
 
 def addMsgAndPrint(msg, severity=0): 
     # prints msg to screen and adds msg to the geoprocessor (in case this is run as a tool) 
-    #print msg 
+    # print(msg 
     try: 
         for string in msg.split('\n'): 
             # Add appropriate geoprocessing message 
@@ -96,48 +69,37 @@ def addMsgAndPrint(msg, severity=0):
     except: 
         pass 
 
-def createFeatureClass(thisDB,featureDataSet,featureClass,shapeType,fieldDefs):
-    addMsgAndPrint('    Creating feature class '+featureClass+'...')
+def createFeatureClass(gdb, featureDataSet, featureClass, shapeType, fieldDefs):
+    addMsgAndPrint(f'    Creating feature class {featureClass}...')
     try:
-        arcpy.env.workspace = thisDB
-        arcpy.CreateFeatureclass_management(featureDataSet,featureClass,shapeType)
-        thisFC = thisDB+'/'+featureDataSet+'/'+featureClass
+        arcpy.env.workspace = str(gdb)
+        arcpy.CreateFeatureclass_management(featureDataSet, featureClass, shapeType)
+        thisFC = str(gdb / featureDataSet / featureClass)
         for fDef in fieldDefs:
             try:
                 if fDef[1] == 'String':
-                    # note that we are ignoring fDef[2], NullsOK or NoNulls
-                    arcpy.AddField_management(thisFC,fDef[0],transDict[fDef[1]],'#','#',fDef[3],'#','NULLABLE')
+                    # note that we are ignoring fDef[2],  NullsOK or NoNulls
+                    arcpy.AddField_management(thisFC, fDef[0], transDict[fDef[1]], '#', '#', fDef[3], '#', 'NULLABLE')
                 else:
                      # note that we are ignoring fDef[2], NullsOK or NoNulls
-                    arcpy.AddField_management(thisFC,fDef[0],transDict[fDef[1]],'#','#','#','#','NULLABLE')
+                    arcpy.AddField_management(thisFC, fDef[0], transDict[fDef[1]], '#', '#', '#', '#', 'NULLABLE')
             except:
-                addMsgAndPrint('Failed to add field '+fDef[0]+' to feature class '+featureClass)
+                addMsgAndPrint(f'Failed to add field {fDef[0]} to feature class {featureClass}')
                 addMsgAndPrint(arcpy.GetMessages(2))
-    except:
+    except Exception as error:
         addMsgAndPrint(arcpy.GetMessages())
-        addMsgAndPrint('Failed to create feature class '+featureClass+' in dataset '+featureDataSet)
+        addMsgAndPrint(f'Failed to create feature class {featureClass} in dataset {featureDataSet}')
+        arcpy.AddMessage(error)
         
 def addTracking(tfc):
     if arcpy.Exists(tfc):
-        addMsgAndPrint('    Enabling edit tracking in '+tfc)
+        addMsgAndPrint(f'    Enabling edit tracking in {tfc}')
         try:
-            arcpy.EnableEditorTracking_management(tfc,'created_user','created_date','last_edited_user','last_edited_date','ADD_FIELDS','DATABASE_TIME')
+            arcpy.EnableEditorTracking_management(tfc, 'created_user', 'created_date', 'last_edited_user', 'last_edited_date', 'ADD_FIELDS', 'DATABASE_TIME')
         except:
             addMsgAndPrint(tfc)
             addMsgAndPrint(arcpy.GetMessages(2))
-
-
-def cartoRepsExistAndLayer(fc):
-    toolbox_dir = os.path.dirname(__file__)
-    crPath = os.path.join(toolbox_dir, 'gems-resources', 'CartoRepsAZGS')
     
-    hasReps = False
-    repLyr = ''
-    for repFc in 'ContactsAndFaults','GeologicLines','OrientationPoints':
-        if fc.find(repFc) > -1:
-            hasReps = True
-            repLyr = os.path.join(crPath,repFc+'.lyr')
-    return hasReps,repLyr
 def rename_field(defs, start_name, end_name):
     """renames a field in a list generated from tableDict for
     special cases; CrossSections and OrientationPoints
@@ -146,46 +108,46 @@ def rename_field(defs, start_name, end_name):
     list_item = [n for n in f_list if n[0] == start_name] #finds ['MapUnitPolys_ID', 'String', 'NoNulls', 50], for instance
     i = f_list.index(list_item[0]) #finds the index of that item
     f_list[i][0] = end_name #changes the name in the list
-    arcpy.AddMessage(f_list[i][0] +  ' becoming ' + end_name)
+    arcpy.AddMessage(f'{f_list[i][0]} becoming {end_name}')
     arcpy.AddMessage(f_list)
     return f_list                                                   
 
-def main(thisDB,coordSystem,nCrossSections):
+def main(thisDB, coordSystem, nCrossSections):
     # create feature dataset GeologicMap
     addMsgAndPrint('  Creating feature dataset GeologicMap...')
     try:
-        arcpy.CreateFeatureDataset_management(thisDB,'GeologicMap',coordSystem)
+        arcpy.CreateFeatureDataset_management(str(thisDB), 'GeologicMap', coordSystem)
     except:
         addMsgAndPrint(arcpy.GetMessages(2))
 
     # create feature classes in GeologicMap
     # poly feature classes
     featureClasses = ['MapUnitPolys']
-    for fc in ['DataSourcePolys','MapUnitOverlayPolys','OverlayPolys']:
+    for fc in ['DataSourcePolys', 'MapUnitOverlayPolys', 'OverlayPolys']:
         if fc in OptionalElements:
             featureClasses.append(fc)
     for featureClass in featureClasses:
         fieldDefs = tableDict[featureClass]
         if addLTYPE and fc != 'DataSourcePolys':
-            fieldDefs.append(['PTYPE','String','NullsOK',50])
-        createFeatureClass(thisDB,'GeologicMap',featureClass,'POLYGON',fieldDefs)
+            fieldDefs.append(['PTYPE', 'String', 'NullsOK', 50])
+        createFeatureClass(thisDB, 'GeologicMap', featureClass, 'POLYGON', fieldDefs)
             
     # line feature classes
     featureClasses = ['ContactsAndFaults']
-    for fc in ['GeologicLines','CartographicLines','IsoValueLines', 'MapUnitLines']:
+    for fc in ['GeologicLines', 'CartographicLines', 'IsoValueLines', 'MapUnitLines']:
         if fc in OptionalElements:
             featureClasses.append(fc)
 
     for featureClass in featureClasses:
         fieldDefs = tableDict[featureClass]
-        if featureClass in ['ContactsAndFaults','GeologicLines'] and addLTYPE:
-            fieldDefs.append(['LTYPE','String','NullsOK',50])
-        createFeatureClass(thisDB,'GeologicMap',featureClass,'POLYLINE',fieldDefs)
+        if featureClass in ['ContactsAndFaults', 'GeologicLines'] and addLTYPE:
+            fieldDefs.append(['LTYPE', 'String', 'NullsOK', 50])
+        createFeatureClass(thisDB, 'GeologicMap', featureClass, 'POLYLINE', fieldDefs)
 
     # point feature classes
     featureClasses = []
-    for fc in ['OrientationPoints','GeochronPoints','FossilPoints','Stations',
-                  'GenericSamples','GenericPoints', 'MapUnitPoints']:
+    for fc in ['OrientationPoints', 'GeochronPoints', 'FossilPoints', 'Stations',
+                  'GenericSamples', 'GenericPoints',  'MapUnitPoints']:
         if fc in OptionalElements:
             featureClasses.append(fc)
     for featureClass in featureClasses:
@@ -212,19 +174,19 @@ I agree -
         """
         fieldDefs = tableDict[featureClass]                                           
         if addLTYPE:
-            fieldDefs.append(['PTTYPE','String','NullsOK',50])
-        createFeatureClass(thisDB,'GeologicMap',featureClass,'POINT',fieldDefs)
+            fieldDefs.append(['PTTYPE', 'String', 'NullsOK', 50])
+        createFeatureClass(thisDB, 'GeologicMap', featureClass, 'POINT', fieldDefs)
 
     # create feature dataset CorrelationOfMapUnits
     if 'CorrelationOfMapUnits' in OptionalElements:
         addMsgAndPrint('  Creating feature dataset CorrelationOfMapUnits...')
-        arcpy.CreateFeatureDataset_management(thisDB,'CorrelationOfMapUnits', coordSystem)
+        arcpy.CreateFeatureDataset_management(str(thisDB), 'CorrelationOfMapUnits', coordSystem)
         fieldDefs = tableDict['CMUMapUnitPolys']
-        createFeatureClass(thisDB,'CorrelationOfMapUnits','CMUMapUnitPolys','POLYGON',fieldDefs)
+        createFeatureClass(thisDB, 'CorrelationOfMapUnits', 'CMUMapUnitPolys', 'POLYGON', fieldDefs)
         fieldDefs = tableDict['CMULines']
-        createFeatureClass(thisDB,'CorrelationOfMapUnits','CMULines','POLYLINE',fieldDefs)
+        createFeatureClass(thisDB, 'CorrelationOfMapUnits', 'CMULines', 'POLYLINE', fieldDefs)
         fieldDefs = tableDict['CMUPoints']
-        createFeatureClass(thisDB,'CorrelationOfMapUnits','CMUPoints','POINT',fieldDefs)
+        createFeatureClass(thisDB, 'CorrelationOfMapUnits', 'CMUPoints', 'POINT', fieldDefs)
     
     # create CrossSections
     if nCrossSections > 26:
@@ -234,42 +196,42 @@ I agree -
     # note space in position 0
     alphabet = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     
-    for n in range(1,nCrossSections+1):
+    for n in range(1, nCrossSections+1):
         xsLetter = alphabet[n]
-        xsName = 'CrossSection'+xsLetter
-        xsN = 'CS'+xsLetter
-        addMsgAndPrint('  Creating feature data set CrossSection'+xsLetter+'...')
-        arcpy.CreateFeatureDataset_management(thisDB, xsName, coordSystem)
-        muDefs = rename_field(tableDict['MapUnitPolys'], 'MapUnitPolys_ID', xsN+'MapUnitPolys_ID')
+        xsName = f'CrossSection{xsLetter}'
+        xsN = f'CS{xsLetter}'
+        addMsgAndPrint(f'  Creating feature data set CrossSection{xsLetter}...')
+        arcpy.CreateFeatureDataset_management(str(thisDB), xsName, coordSystem)
+        muDefs = rename_field(tableDict['MapUnitPolys'], 'MapUnitPolys_ID', f'{xsN}MapUnitPolys_ID')
 
-        createFeatureClass(thisDB, xsName, xsN+'MapUnitPolys', 'POLYGON', muDefs)
-        cfDefs = rename_field(tableDict['ContactsAndFaults'], 'ContactsAndFaults_ID', xsN+'ContactsAndFaults_ID')
-        createFeatureClass(thisDB, xsName, xsN+'ContactsAndFaults', 'POLYLINE', cfDefs)
+        createFeatureClass(thisDB, xsName, f'{xsN}MapUnitPolys', 'POLYGON', muDefs)
+        cfDefs = rename_field(tableDict['ContactsAndFaults'], 'ContactsAndFaults_ID', f'{xsN}ContactsAndFaults_ID')
+        createFeatureClass(thisDB, xsName, f'{xsN}ContactsAndFaults', 'POLYLINE', cfDefs)
 
 
         if 'OrientationPoints' in OptionalElements:
-            opDefs = rename_field(tableDict['OrientationPoints'], 'OrientationPoints_ID', xsN+'OrientationPoints_ID')
-            createFeatureClass(thisDB, xsName, xsN+'OrientationPoints','POINT', opDefs)
+            opDefs = rename_field(tableDict['OrientationPoints'], 'OrientationPoints_ID', f'{xsN}OrientationPoints_ID')
+            createFeatureClass(thisDB, xsName, f'{xsN}OrientationPoints', 'POINT', opDefs)
   
 
     # create tables
-    tables = ['DescriptionOfMapUnits','DataSources','Glossary']
-    for tb in ['RepurposedSymbols','StandardLithology','GeologicEvents','MiscellaneousMapInformation']:
+    tables = ['DescriptionOfMapUnits', 'DataSources', 'Glossary']
+    for tb in ['RepurposedSymbols', 'StandardLithology', 'GeologicEvents', 'MiscellaneousMapInformation']:
         if tb in OptionalElements:
             tables.append(tb)
     for table in tables:
-        addMsgAndPrint('  Creating table '+table+'...')
+        addMsgAndPrint(f'  Creating table {table}...')
         try:
-            arcpy.CreateTable_management(thisDB,table)
+            arcpy.CreateTable_management(str(thisDB), table)
             fieldDefs = tableDict[table]
             for fDef in fieldDefs:
                 try:
                     if fDef[1] == 'String':
-                        arcpy.AddField_management(thisDB+'/'+table,fDef[0],transDict[fDef[1]],'#','#',fDef[3],'#',transDict[fDef[2]])
+                        arcpy.AddField_management(str(thisDB / table), fDef[0], transDict[fDef[1]], '#', '#', fDef[3], '#', transDict[fDef[2]])
                     else:
-                        arcpy.AddField_management(thisDB+'/'+table,fDef[0],transDict[fDef[1]],'#','#','#','#',transDict[fDef[2]])
+                        arcpy.AddField_management(str(thisDB / table), fDef[0], transDict[fDef[1]], '#', '#', '#', '#', transDict[fDef[2]])
                 except:
-                    addMsgAndPrint('Failed to add field '+fDef[0]+' to table '+table)
+                    addMsgAndPrint(f'Failed to add field {fDef[0]} to table {table}')
                     addMsgAndPrint(arcpy.GetMessages(2))		    
         except:
             addMsgAndPrint(arcpy.GetMessages())
@@ -277,145 +239,141 @@ I agree -
     ### GeoMaterials
     addMsgAndPrint('  Setting up GeoMaterialsDict table and domains...')
     
-    #  Copy GeoMaterials table
-    toolbox_dir = os.path.dirname(__file__)
-    geo_mat_table = os.path.join(toolbox_dir, 'gems-resources', 'GeMS_lib.gdb', 'GeoMaterialDict')
-    arcpy.Copy_management(geo_mat_table, os.path.join(thisDB, 'GeoMaterialDict'))
+    # import GeoMaterials table from csv in \resources
+    toolbox_dir = Path(__file__).parent
+    geo_mat_table = toolbox_dir / 'resources' / 'geomaterialdict.csv'
+    arcpy.MakeTableView_management(str(geo_mat_table), 'geomatdict')
+    arcpy.conversion.TableToTable('geomatdict', str(thisDB), 'GeoMaterialDict')
     
-    #   make GeoMaterials domain
-    arcpy.TableToDomain_management(thisDB+'/GeoMaterialDict','GeoMaterial','IndentedName',thisDB,'GeoMaterials')
+    # make GeoMaterials domain
+    arcpy.TableToDomain_management(str(thisDB / 'GeoMaterialDict'), 'GeoMaterial', 'IndentedName', str(thisDB), 'GeoMaterials')
     
-    #   attach it to DMU field GeoMaterial
-    arcpy.AssignDomainToField_management(thisDB+'/DescriptionOfMapUnits','GeoMaterial','GeoMaterials')  
+    # attach it to DMU field GeoMaterial
+    arcpy.AssignDomainToField_management(str(thisDB / 'DescriptionOfMapUnits'), 'GeoMaterial', 'GeoMaterials')  
     
-    #  Make GeoMaterialConfs domain, attach it to DMU field GeoMaterialConf
-    arcpy.CreateDomain_management(thisDB,'GeoMaterialConfidenceValues','','TEXT','CODED')
+    # Make GeoMaterialConfs domain, attach it to DMU field GeoMaterialConf
+    arcpy.CreateDomain_management(str(thisDB), 'GeoMaterialConfidenceValues', '', 'TEXT', 'CODED')
     for val in GeoMaterialConfidenceValues:
-        arcpy.AddCodedValueToDomain_management(thisDB,'GeoMaterialConfidenceValues',val,val)
-    arcpy.AssignDomainToField_management(thisDB+'/DescriptionOfMapUnits','GeoMaterialConfidence','GeoMaterialConfidenceValues')
+        arcpy.AddCodedValueToDomain_management(str(thisDB), 'GeoMaterialConfidenceValues', val, val)
+    arcpy.AssignDomainToField_management(str(thisDB / 'DescriptionOfMapUnits'), 'GeoMaterialConfidence', 'GeoMaterialConfidenceValues')
     
-    #Confidence domains, Glossary entries, and DataSources entry
+     #onfidence domains, Glossary entries, and DataSources entry
     if addConfs:
         addMsgAndPrint('  Adding standard ExistenceConfidence and IdentityConfidence domains')
-        #  create domain, add domain values, and link domain to appropriate fields
+        # create domain, add domain values, and link domain to appropriate fields
         addMsgAndPrint('    Creating domain, linking domain to appropriate fields')
-        arcpy.CreateDomain_management(thisDB,'ExIDConfidenceValues','','TEXT','CODED')
+        arcpy.CreateDomain_management(str(thisDB), 'ExIDConfidenceValues', '', 'TEXT', 'CODED')
         for item in DefaultExIDConfidenceValues:  # items are [term, definition, source]
             code = item[0]
-            arcpy.AddCodedValueToDomain_management(thisDB,'ExIDConfidenceValues',code,code)
-        arcpy.env.workspace = thisDB
+            arcpy.AddCodedValueToDomain_management(str(thisDB), 'ExIDConfidenceValues', code, code)
+        arcpy.env.workspace = str(thisDB)
         dataSets = arcpy.ListDatasets()
         for ds in dataSets:
-            arcpy.env.workspace = thisDB+'/'+ds
+            arcpy.env.workspace = str(thisDB / ds)
             fcs = arcpy.ListFeatureClasses()
             for fc in fcs:
                 fieldNames = fieldNameList(fc)
                 for fn in fieldNames:
-                    if fn in ('ExistenceConfidence', 'IdentityConfidence','ScientificConfidence'):
+                    if fn in ('ExistenceConfidence', 'IdentityConfidence', 'ScientificConfidence'):
                         #addMsgAndPrint('    '+ds+'/'+fc+':'+fn)
-                        arcpy.AssignDomainToField_management(thisDB+'/'+ds+'/'+fc,fn,'ExIDConfidenceValues')
+                        arcpy.AssignDomainToField_management(str(thisDB / ds / fc), fn, 'ExIDConfidenceValues')
         # add definitions of domain values to Glossary
         addMsgAndPrint('    Adding domain values to Glossary')
         ## create insert cursor on Glossary
-        cursor = arcpy.da.InsertCursor(thisDB+'/Glossary',['Term','Definition','DefinitionSourceID'])
+        cursor = arcpy.da.InsertCursor(str(thisDB / 'Glossary'), ['Term', 'Definition', 'DefinitionSourceID'])
         for item in DefaultExIDConfidenceValues:
-            cursor.insertRow((item[0],item[1],item[2]))
+            cursor.insertRow((item[0], item[1], item[2]))
         del cursor
         # add definitionsource to DataSources
         addMsgAndPrint('    Adding definition source to DataSources')        
         ## create insert cursor on DataSources
-        cursor = arcpy.da.InsertCursor(thisDB+'/DataSources',['DataSources_ID','Source','URL'])
-        cursor.insertRow(('FGDC-STD-013-2006','Federal Geographic Data Committee [prepared for the Federal Geographic Data Committee by the U.S. Geological Survey], 2006, FGDC Digital Cartographic Standard for Geologic Map Symbolization: Reston, Va., Federal Geographic Data Committee Document Number FGDC-STD-013-2006, 290 p., 2 plates.','https://ngmdb.usgs.gov/fgdc_gds/geolsymstd.php'))
+        cursor = arcpy.da.InsertCursor('DataSources', ['DataSources_ID', 'Source', 'URL'])
+        cursor.insertRow(('FGDC-STD-013-2006', 'Federal Geographic Data Committee [prepared for the Federal Geographic Data Committee by the U.S. Geological Survey], 2006, FGDC Digital Cartographic Standard for Geologic Map Symbolization: Reston, Va., Federal Geographic Data Committee Document Number FGDC-STD-013-2006, 290 p., 2 plates.','https://ngmdb.usgs.gov/fgdc_gds/geolsymstd.php'))
         del cursor 
 
-    # if cartoReps, add cartographic representations to all feature classes
     # trackEdits, add editor tracking to all feature classes and tables
-    if cartoReps or trackEdits:
-        arcpy.env.workspace = thisDB
+    if trackEdits:
+        arcpy.env.workspace = str(thisDB)
         tables = arcpy.ListTables()
         datasets = arcpy.ListDatasets()
         for dataset in datasets:
-            addMsgAndPrint('  Dataset '+dataset)
-            arcpy.env.workspace = thisDB+'/'+dataset
+            addMsgAndPrint(f'  Dataset {dataset}')
+            arcpy.env.workspace = str(thisDB / dataset)
             fcs = arcpy.ListFeatureClasses()
             for fc in fcs:
-                hasReps,repLyr = cartoRepsExistAndLayer(fc)
-                if cartoReps and hasReps:
-                    addMsgAndPrint('    Adding cartographic representations to '+fc)
-                    try:
-                        arcpy.AddRepresentation_cartography(fc,fc+'_rep1','RuleID1','Override1',default,repLyr,'NO_ASSIGN')
-                        """
-                            Note the 1 suffix on the representation name (fc+'_rep1') and the RuleID1 and Override1 fields.
-                        If at some later time we wish to add additional representations to a feature class, each will
-                        require it's own RuleID and Override fields which may be identified, and tied to the appropriate
-                        representation, by suffixes 2, 3, ...
-                            Naming representations fc+'_rep'+str(n) should be sufficient to identify each representation in a 
-                        geodatabase uniquely, and allow for multiple representations within a single feature class.
-                            It appears that ArcGIS provides no means of scripting an inventory of representations within
-                        feature class or geodatabase. So, the convenience of establishing a coded-value domain that ties
-                        representation rule IDs (consecutive integers) to some sort of useful text identifier becomes a
-                        necessity for flagging the presence of a representation: One CAN script the inventory of domains
-                        in a geodatabase. Run arcpy.da.ListDomains. Check the result for names of the form
-                        <featureClassName>_rep??_Rule and voila, you've got a list of representations (and their associated
-                        feature classes) in the geodatabase.
-                            Moral: If you add a representation, be sure to add an associated coded-value domain and name
-                        it appropriately!
-                        """
-                    except:
-                        addMsgAndPrint(arcpy.GetMessages(2))
                 if trackEdits:
-                    addTracking(os.path.join(thisDB,fc))
+                    addTracking(str(thisDB / aTable))
         if trackEdits:
             addMsgAndPrint('  Tables ')
             arcpy.env.workspace = thisDB
             for aTable in tables:
                 if aTable != 'GeoMaterialDict':
-                    addTracking(os.path.join(thisDB,aTable))
+                    addTracking(str(thisDB / aTable))
 
-def createDatabase(outputDir,thisDB):
-    addMsgAndPrint('  Creating geodatabase '+thisDB+'...')
-    if arcpy.Exists(outputDir+'/'+thisDB):
-        addMsgAndPrint('  Geodatabase '+thisDB+' already exists.')
+def createDatabase(outputDir, thisDB):
+    addMsgAndPrint(f'  Creating geodatabase {thisDB}')
+    if arcpy.Exists(str(outputDir / thisDB)):
+        addMsgAndPrint(f'  Geodatabase {thisDB} already exists.')
         addMsgAndPrint('   forcing exit with error')
         raise arcpy.ExecuteError
     try:
         # removed check for mdb. Personal geodatabases are out - ET
         if thisDB[-4:] == '.gdb':
-            arcpy.CreateFileGDB_management(outputDir,thisDB)
+            arcpy.CreateFileGDB_management(str(outputDir), thisDB)
         return True
     except:
-        addMsgAndPrint('Failed to create geodatabase '+outputDir+'/'+thisDB)
+        addMsgAndPrint(f'Failed to create geodatabase {str(Path(outputDir) / thisDB)}')
         addMsgAndPrint(arcpy.GetMessages(2))
         return False
 
-#########################################
+
+def parse_parameters(params):
+    '''Usage:
+       GeMS_CreateDatabase_Arc10.1.py [directory] [geodatabaseName] [coordSystem]
+                    [OptionalElements] [#XSections] [AddEditTracking] [AddRepresentations] [AddLTYPE]
+       [directory] is existing directory in which new geodatabaseName is to 
+          be created, use # for current directory
+       [geodatabaseName] is name of gdb to be created, with extension
+          .gdb causes a file geodatabase to be created
+          .mdb causes a personal geodatabase to be created
+       [coordSystem] is a fully-specified ArcGIS coordinate system
+       [OptionalElements] is either # or a semicolon-delimited string specifying
+          which non-required elements should be created (e.g.,
+          OrientationPoints;CartographicLines;RepurposedSymbols )
+       [#XSections] is an integer (0, 1, 2, ...) specifying the intended number of
+          cross-sections
+       [AddEditTracking] is either true or false (default is true). Parameter is ignored if
+          ArcGIS version is less than 10.1
+       [AddLTYPE] is either true or false (default is false). If true, add LTYPE field
+          to feature classes ContactsAndFaults and GeologicLines, add PTTYPE field
+          to feature class OrientationData, and add PTTYPE field to MapUnitLabelPoints    
+    '''
     
-addMsgAndPrint(versionString)
-
-if len(sys.argv) >= 6:
     addMsgAndPrint('Starting script')
-
-    outputDir = sys.argv[1]
+    addMsgAndPrint(versionString)
+    
+    outputDir = params[0]
     if outputDir == '#':
         outputDir = os.getcwd()
-    outputDir = outputDir.replace('\\','/')
+    outputDir = Path(outputDir) 
+    
+    thisDB = params[1]
+    if not thisDB.endswith('.gdb'):
+        thisDB = f'{thisDB}.gdb'
 
-    thisDB = sys.argv[2]
-    thisDB = thisDB+'.gdb'
+    coordSystem = params[2]
 
-    coordSystem = sys.argv[3]
-
-    if sys.argv[4] == '#':
+    if params[3] == '#' or params[3] is None:
         OptionalElements = []
     else:
-        OptionalElements = sys.argv[4].split(';')
-    if debug:
-        addMsgAndPrint(f'Optional elements = {OptionalElements}')
+        OptionalElements = params[3].split(';')
+    # if debug:
+        # addMsgAndPrint(f'Optional elements = {OptionalElements}')
     
-    nCrossSections = int(sys.argv[5])
+    nCrossSections = int(params[4])
 
     try:
-        if sys.argv[6] == 'true':
+        if params[5] == 'true':
             trackEdits = True
         else:
             trackEdits = False
@@ -426,15 +384,7 @@ if len(sys.argv) >= 6:
         trackEdits = False
         
     try:
-        if sys.argv[7] == 'true':
-            cartoReps = True
-        else:
-            cartoReps = False
-    except:
-        cartoReps = False
-
-    try:
-        if sys.argv[8] == 'true':
+        if params[6] == 'true':
             addLTYPE = True
         else:
             addLTYPE = False
@@ -442,7 +392,7 @@ if len(sys.argv) >= 6:
         addLTYPE = False
         
     try:
-        if sys.argv[9] == 'true':
+        if params[7] == 'true':
             addConfs = True
         else:
             addConfs = False
@@ -450,18 +400,26 @@ if len(sys.argv) >= 6:
         addConfs = False
         
     # create gdb in output directory and run main routine
-    if createDatabase(outputDir,thisDB):
-        thisDB = os.path.join(outputDir, thisDB)
-        #Arc 10 version refreshed ArcCatalog here, but there is no equivalent with AGPro
-        main(thisDB,coordSystem,nCrossSections)
+    if createDatabase(outputDir, thisDB):
+        thisDB = Path(outputDir) / thisDB
+        main(thisDB, coordSystem, nCrossSections)
 
     # try to write a readme within the .gdb
-    if thisDB[-4:] == '.gdb':
+    if str(thisDB).endswith('.gdb'):
         try:
-            writeLogfile(thisDB,'Geodatabase created by '+versionString)
+            writeLogfile(str(thisDB), f'Geodatabase created by {versionString}')
         except:
-            addMsgAndPrint('Failed to write to'+thisDB+'/00log.txt')
+            addMsgAndPrint(f'Failed to write to {str(thisDB)}/00log.txt')
 
-else:
-    addMsgAndPrint(usage)
+#########################################
+# if this script is being called from the command line, __name__ gets set to '__main__' and the parameters
+# are accessed through sys.argv (although first we check to see if the right number have been supplied and
+# remind the user through a docstring if not)
+# if the script is being accessed after being imported into another script, eg, the GeMS python toolbox .pyt, then the parameters
+# will be collected by that script and sent directly to def parse_parameters()
+if __name__ == '__main__':
+    if len(sys.argv) < 6:
+        print(parse_parameters.__doc__)
+    else:
+        parse_parameters(sys.argv[1:])
 

@@ -36,11 +36,11 @@ from GeMS_utilityFunctions import *
 class Toolbox(object):
     def __init__(self):
         self.label = u'GeMS Tools'
-        self.alias = ''
+        self.alias = 'gems'
         # The list order here does not affect the order of the tools in the toolbox
         # Arc sorts and displays the tools alphabetically
         self.tools = [Deplanarize, CompactAndBackup, AttributeByKeyValues, CreateDatabase, 
-                      DocxToDMU, MakePolys, MakeTopology, MapOutline, ProjectCrossSectionData, ProjectPointsToCrossSection, InclinationNumber, SetPlotAtScales, SetSymbols, SetIDvalues, FGDC_1, FGDC_2, FGDC_3, PurgeMetadata, RelationshipClasses,
+                      DocxToDMU, MakePolys, MakeTopology, MapOutline, ProjectCrossSectionData, ProjectPointsToCrossSection, InclinationNumber, SetPlotAtScales, SetSymbols, SetIDvalues, PurgeMetadata, RelationshipClasses,
                       FixStrings, TranslateToShape, SymbolToRGB, TopologyCheck, GeologicNamesCheck,
                       ValidateDatabase, DMUtoDocx, RebuildMapUnitPolys]
 
@@ -91,13 +91,13 @@ class AttributeByKeyValues(object):
         GeMS_AttributeByKeyValues_AGP2.main(parameter_values)
 
 class CreateDatabase(object):
-    """"\Scripts\GeMS_CreateDatabase_AGP2.py"""
+    """"GeMS_CreateDatabase_AGP2.py"""
     def __init__(self):
         self.label = u'Create New Database'
         self.description = u'Creates an empty GeMS-style geodatabase'
         self.canRunInBackground = False
         self.category = u'Create and Edit'
-        
+       
     def getParameterInfo(self):
         # Output_Workspace
         param_1 = arcpy.Parameter()
@@ -131,7 +131,7 @@ class CreateDatabase(object):
         param_4.direction = 'Input'
         param_4.datatype = u'GPString'
         param_4.multiValue = True
-        param_4.filter.list = [u'CartographicLines', u'CorrelationOfMapUnits', u'DataSourcePolys', u'FossilPoints', u'GenericPoints', u'GeochronPoints', u'GeologicLines', u'IsoValueLines', u'MapUnitLines', u'MapUnitPoints', u'MapUnitOverlayPolys', u'MiscellaneousMapInformation', u'OrientationPoints', u'OverlayPolys', u'RepurposedSymbols', u'StandardLithology', u'Stations']
+        param_4.filter.list = ['CartographicLines', 'CorrelationOfMapUnits', 'DataSourcePolys', 'FossilPoints', 'GenericPoints', 'GeochronPoints', 'GeologicLines', 'IsoValueLines', 'MapUnitLines', 'MapUnitPoints', 'MapUnitOverlayPolys', 'MiscellaneousMapInformation', 'OrientationPoints', 'OverlayPolys', 'RepurposedSymbols', 'StandardLithology', 'Stations']
 
         # Number_of_cross_sections
         param_5 = arcpy.Parameter()
@@ -149,47 +149,50 @@ class CreateDatabase(object):
         param_6.parameterType = 'Required'
         param_6.direction = 'Input'
         param_6.datatype = u'GPBoolean'
-        param_6.value = u'true'
+        param_6.value = u'false'
 
-        # Add_fields_for_cartographic_representations
+        # Add_LTYPE_and_PTTYPE
         param_7 = arcpy.Parameter()
-        param_7.name = u'Add_fields_for_cartographic_representations'
-        param_7.displayName = u'Add fields for cartographic representations'
+        param_7.name = u'Add_LTYPE_and_PTTYPE'
+        param_7.displayName = u'Add LTYPE and PTTYPE'
         param_7.parameterType = 'Required'
         param_7.direction = 'Input'
         param_7.datatype = u'GPBoolean'
         param_7.value = u'false'
 
-        # Add_LTYPE_and_PTTYPE
+        # Add_standard_confidence_values
         param_8 = arcpy.Parameter()
-        param_8.name = u'Add_LTYPE_and_PTTYPE'
-        param_8.displayName = u'Add LTYPE and PTTYPE'
+        param_8.name = u'Add_standard_confidence_values'
+        param_8.displayName = u'Add standard confidence values'
         param_8.parameterType = 'Required'
         param_8.direction = 'Input'
         param_8.datatype = u'GPBoolean'
-        param_8.value = u'false'
+        param_8.value = u'true'
 
-        # Add_standard_confidence_values
-        param_9 = arcpy.Parameter()
-        param_9.name = u'Add_standard_confidence_values'
-        param_9.displayName = u'Add standard confidence values'
-        param_9.parameterType = 'Required'
-        param_9.direction = 'Input'
-        param_9.datatype = u'GPBoolean'
-        param_9.value = u'true'
-
-        return [param_1, param_2, param_3, param_4, param_5, param_6, param_7, param_8, param_9]
-
+        return [param_1, param_2, param_3, param_4, param_5, param_6, param_7, param_8]
+        
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter.  This method is called after internal validation."""
+        if parameters[0].valueAsText is None:
+            import GeMS_CreateDatabase_AGP2
+            importlib.reload(GeMS_CreateDatabase_AGP2)
+            print(GeMS_CreateDatabase_AGP2.parse_parameters.__doc__)
+        return
+        
     def execute(self, parameters, messages):
         # import and reload the tool script to get the latest version; if making edits to the tool script
         import GeMS_CreateDatabase_AGP2
         importlib.reload(GeMS_CreateDatabase_AGP2)
-        
+        #try:
         # construct a list of parameter.valueAsText strings to send to the tool
         parameter_values = [parameter.valueAsText for parameter in parameters]
         
-        # the script tool has been imported as a module. Now call the main function
-        GeMS_CreateDatabase_AGP2.main(parameter_values)
+        # the script tool has been imported as a module. Now call def parse_parameters()
+        GeMS_CreateDatabase_AGP2.parse_parameters(parameter_values)
+        #except ExecuteError:
+        #print(GeMS_CreateDatabase_AGP2.parse_parameters.__doc__)
+        #pass
 
 class DocxToDMU(object):
     """"C:\_AAA\gems\gitspace\arcmap-pyt\Scripts\GeMS_DMUtoDocx_AGP2.py"""
