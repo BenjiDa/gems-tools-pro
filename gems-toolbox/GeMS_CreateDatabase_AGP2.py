@@ -349,7 +349,7 @@ def parse_parameters(params):
           definition source for "certain" and "questionable" to the Glossary table. 3) Adds the definition source 
           (FGDC-STD-013-2006) to the DataSources table.
 
-        Boolean parameters may be set with 1, "1", "0" "true", "false",True, "yes", "Yes",  
+        Boolean parameters may be set with 1, "1", "0" "true", "false", True, "yes", "Yes",  
     '''
 
     trackEdits = False
