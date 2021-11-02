@@ -10,140 +10,122 @@
 #   and whereClauses more pythonic
 #   Added better handling of boolean to determine overwriting or not of existing values
 
-usage = """
-Usage: GeMS_AttributeByKeyValues.py <geodatabase> <file.txt> <force calculation>
-  <geodatabase> is an NCGMP09-style geodatabase--with mapdata in feature
-     dataset GeologicMap
-  <file.txt> is a formatted text file that specifies feature classes,
-     field names, values of independent fields, and values of dependent fields.
-     See Dig24K_KeyValues.txt for an example and format instructions.
-  <force calculation> boolean (True/False with or without quotes) that will 
-     determine if existing values may be overwritten (True) or only null, 0, orgot
-     otherwise empty values will be calculated (False)
-     """
-
-versionString = 'GeMS_AttributeByKeyValues_AGP2.py, version of 30 May 2019'
-rawurl = 'https://raw.githubusercontent.com/usgs/gems-tools-pro/master/Scripts/GeMS_AttributeByKeyValues_AGP2.py'
-checkVersion(versionString, rawurl, 'gems-tools-pro')
-
 import arcpy, sys
 from GeMS_utilityFunctions import *
 
+versionString = 'GeMS_AttributeByKeyValues_AGP2.py, version of 28 October 2021'
+rawurl = 'https://raw.githubusercontent.com/usgs/gems-tools-pro/master/Scripts/GeMS_AttributeByKeyValues_AGP2.py'
+checkVersion(versionString, rawurl, 'gems-tools-pro')
+
 separator = '|'
 
-def makeFieldTypeDict(fds,fc):
+def eval_bool(param):
+    '''Return a boolean for various possibilities of boolean-like values'''
+    return_bool = False
+    if param in [1, '1', True, 'true', 'True', 'yes', 'Yes', 'on', 'On', 'hella']:
+        return_bool = True
+        
+    return return_bool
+
+def makeFieldTypeDict(fc_path):
     fdict = {}
-    fields = arcpy.ListFields(fds+'/'+fc)
+    fields = arcpy.ListFields(fc_path)
     for fld in fields:
         fdict[fld.name] = fld.type
     return fdict
 
-addMsgAndPrint('  '+versionString)
-if len(sys.argv) != 4:
-    addMsgAndPrint(usage)
-    sys.exit()
+def main(parameters):
+    """
+    Usage: 
+      GeMS_AttributeByKeyValues.py <geodatabase> <file.txt> <force calculation>
+      <geodatabase> is an GeMS-style geodatabase with map data in feature
+         dataset GeologicMap
+      <file.txt> is a formatted text file that specifies feature classes,
+         field names, values of independent fields, and values of dependent fields.
+         See Dig24K_KeyValues.txt for an example and format instructions.
+      <force calculation> boolean (yes, no, true, false, etc.) that will 
+         determine if existing values may be overwritten (True) or only null, or 0
+         otherwise empty values will be calculated (False)
+     """
+    addMsgAndPrint('  '+versionString)
 
-gdb = sys.argv[1]
-keylines1 = open(sys.argv[2],'r').readlines()
-if sys.argv[3].lower() == 'true':
-    forceCalc = True
-else:
-    forceCalc = False
+    gdb = parameters[0]
+    key_val_file = parameters[1]
+    forceCalc = eval_bool(parameters[2])
 
-# print(forceCalc)
-# raise SystemError
+    if forceCalc:
+        addMsgAndPrint("Forcing the overwriting of existing values")
+    
+    # make a dictionary of geodatabase objects = full paths
+    gdb_walk = arcpy.da.Walk(gdb)
+    gdb_dict = {}
+    for workspace, fds, filenames in gdb_walk:
+        for filename in filenames:
+            gdb_dict[filename] = os.path.join(workspace, filename)
+    
+    # from the key-value text file, make a dictionary of 
+    # feature class name = all of the related value mappings
+    # first, open the file, read the lines as a list, and clean the strings
+    with open(key_val_file, 'r') as file:
+        key_lines = file.readlines()
+    key_lines = [line for line in key_lines if not line.startswith('#')]
+    key_lines = [line.strip() for line in key_lines if not line.strip() == '']
+    key_lines = [line.replace(' | ', '|') for line in key_lines]
+    
+    # read through this list of lines and save the indices of the feature class names
+    # and the last item in the list will be the length of the list
+    fc_indices = []
+    for i, line in enumerate(key_lines):
+        terms = line.split('|')
+        if len(terms) == 1:
+            fc_indices.append(i)
+    fc_indices.append(len(key_lines))
+    
+    # now we have some indices within the list we can use to slice the list
+    # into chunks that group lines related to the feature classes
+    # build a dictionary in the form {table: {independent field: [dependent field values]}}
+    # also build a dictionary in the form {table: [update field names]} to store the names of the dependent fields
+    fc_val_dict = {}
+    update_fields_dict = {}
+    n = 0
+    while n < len(fc_indices) - 1:
+        # the table name is at index n from fc_indices
+        fc_name = key_lines[fc_indices[n]]
+        # the values lines follow from index n to the next number in fc_indices
+        fc_vals = [n for n in key_lines[fc_indices[n] + 1 : fc_indices[n + 1]]]
+        # the names of the fields will be at index 0 of this new list of lines (fc_vals_)
+        update_fields = fc_vals[0].split('|')
+        update_fields_dict[fc_name] = update_fields
+        # use dictionary comprehension to make entries {independent field: [dependent field values]}
+        # {key:value for item in list}
+        val_dict = {n.split('|')[0]:n.split('|')[1:] for n in fc_vals[1:]}
+        fc_val_dict[fc_name] = val_dict
+        n = n + 1
+    
+    # now work through the tables that are named in the key-value text file
+    for fc in fc_val_dict:
+        addMsgAndPrint(
+        update_fields = update_fields_dict[fc]
+        update_val_dict = fc_val_dict[fc]
+        if fc in gdb_dict:
+            with arcpy.da.UpdateCursor(gdb_dict[fc], update_fields) as cursor:
+                for row in cursor:
+                    # the independent field will be at index row[0] and we can use it as a key the dictionary we just
+                    # retrieved, update_val_dict, to get a list of values for the rest of the fields
+                    update_vals = update_val_dict[row[0].strip()]
+                    for n, k in enumerate(update_vals):
+                        # put forceCalc check here seeing if row[n+1] has a value or not
+                        row[n+1] = k
+                    cursor.updateRow(row)
 
-if forceCalc:
-    addMsgAndPrint("Forcing the overwriting of existing values")
-
-arcpy.env.workspace = gdb
-arcpy.env.workspace = 'GeologicMap'
-featureClasses = arcpy.ListFeatureClasses()
-arcpy.env.workspace = gdb
-
-# remove empty lines from keylines1
-keylines = []
-for lin in keylines1:
-    lin = lin.strip()
-    if len(lin) > 1 and lin[0:1] != '#':
-        keylines.append(lin)
-
-countPerLines = []
-for line in keylines:
-    countPerLines.append(len(line.split(separator)))
-
-n = 0
-while n < len(keylines):
-    terms = keylines[n].split(separator) # remove newline and split on commas
-    if len(terms) == 1:
-        fClass = terms[0]
-        if fClass in featureClasses:
-            mFieldTypeDict = makeFieldTypeDict('GeologicMap', fClass)
-            n = n+1
-            mFields = keylines[n].split(separator)
-            for i in range(len(mFields)):
-                mFields[i] = mFields[i].strip() # remove leading and trailing whitespace
-                numMFields = len(mFields)
-            addMsgAndPrint('  {}'.format(fClass))
-        else:
-            if len(fClass) > 0:  # catch trailing empty lines
-                addMsgAndPrint('  {} not in {}/GeologicMap'.format(fClass, gdb))
-                while countPerLines[n+1]>1: #This advances the loop till the number of items in the terms list is again one
-                    #, which is when the next feature class is considered
-                    #arcpy.AddMessage("loop count = " + str(n))
-                    if n < len(countPerLines)-2:
-                        #arcpy.AddMessage("count per line = " + str(countPerLines[n]))
-                        n=n+1
-                    elif n == len(countPerLines)-2:
-                        n= len(countPerLines)
-                        break
-                    else:
-                        arcpy.warnings("Unexpected condition met")
-
-    else:  # must be a key-value: dependent values line
-        vals = keylines[n].split(separator)
-        if len(vals) != numMFields:
-            addMsgAndPrint('\nline:\n  {}\nhas wrong number of values. Exiting.'.format(keylines[n]))
-            sys.exit()
-        for i in range(len(vals)):  # strip out quotes
-            vals[i] = vals[i].replace("'",'')
-            vals[i] = vals[i].replace('"','')
-            # remove leading and trailing whitespace
-            vals[i] = vals[i].strip()
-        # iterate through mFields 0--len(mFields)
-        #  if i == 0, make table view, else resel rows with NULL values for attrib[i] and calc values
-        arcpy.env.overwriteOutput = True  # so we can reuse table tempT
-        for i in range(len(mFields)):
-            if i == 0:  # select rows with specified independent value 
-                whereClause = "{} = '{}'".format(arcpy.AddFieldDelimiters(fClass, mFields[i]), vals[0])
-                arcpy.MakeTableView_management('GeologicMap/{}'.format(fClass), 'tempT', whereClause)
-                nSel = int(str(arcpy.GetCount_management('tempT'))) # convert from Result object to integer
-                if nSel == -1:
-                    addMsgAndPrint('    appears to be no value named: {} in: {}'.format(vals[0], mFields[0]))
-                else:
-                    addMsgAndPrint('    selected {} = {}, n = {}'.format(mFields[0], vals[0], str(nSel)))
-            else:  # reselect rows where dependent values are NULL and assign new value
-                if forceCalc:
-                    if nSel > 0:
-                        if mFieldTypeDict[mFields[i]] == 'String':
-                            arcpy.CalculateField_management('tempT', mFields[i], '"{}"'.format(str(vals[i])))
-                        elif mFieldTypeDict[mFields[i]] in ['Double', 'Single', 'Integer', 'SmallInteger']:
-                            arcpy.CalculateField_management('tempT', mFields[i], vals[i])
-                        addMsgAndPrint('        calculated {} = {}'.format(mFields[i], str(vals[i])))
-                elif nSel > 0:
-                    addMsgAndPrint("Calculating only NULL fields")
-                    whereClause = '{} IS NULL'.format(arcpy.AddFieldDelimiters(fClass, mFields[i]))
-                    if mFieldTypeDict[mFields[i]] == 'String':
-                        whereClause = "{0} OR {1} = '' OR {1} = ' '".format(whereClause, mFields[i])
-                    elif mFieldTypeDict[mFields[i]] in ['Double','Single','Integer','SmallInteger']:
-                        whereClause = '{} OR {} = 0'.format(whereClause, mFields[i])
-                    arcpy.SelectLayerByAttribute_management('tempT', 'NEW_SELECTION', whereClause)
-                    nResel = int(str(arcpy.GetCount_management('tempT'))) # convert result object to int
-                    addMsgAndPrint('      reselected {} = NULL, blank, or 0, n = {}'.format(mFields[i], (nResel)))
-                    if nResel > 0:
-                        if mFieldTypeDict[mFields[i]] == 'String':
-                            arcpy.CalculateField_management('tempT', mFields[i], '"{}"'.format(str(vals[i])))
-                        elif mFieldTypeDict[mFields[i]] in ['Double', 'Single', 'Integer', 'SmallInteger']:
-                            arcpy.CalculateField_management('tempT', mFields[i], vals[i])
-                        addMsgAndPrint('        calculated {} = {}'.format(mFields[i], str(vals[i])))
-    n = n+1
+#########################################
+# if this script is being called from the command line, __name__ gets set to '__main__' and the parameters
+# are accessed through sys.argv (although first we check to see if the right number have been supplied and
+# remind the user through a docstring if not)
+# if the script is being accessed after being imported into another script, eg, the GeMS python toolbox .pyt, then the parameters
+# will be collected by that script and sent directly to def main()
+if __name__ == '__main__':
+    if len(sys.argv) < 4:
+        print(main.__doc__)
+    else:
+        main(sys.argv[1:])

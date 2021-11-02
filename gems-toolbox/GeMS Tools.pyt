@@ -51,6 +51,15 @@ class AttributeByKeyValues(object):
         self.description = u'Script to step through an identified subset of feature classes in GeologicMap feature dataset and, for specified values of one or more independent fields, calculate values of dependent fields.'
         self.canRunInBackground = False
         self.category = u'Create and Edit'
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter.  This method is called after internal validation."""
+        if parameters[0].valueAsText is None:
+            import GeMS_AttributeByKeyValues_AGP2
+            importlib.reload(GeMS_AttributeByKeyValues_AGP2)
+            print(GeMS_AttributeByKeyValues_AGP2.main.__doc__)
+        return
         
     def getParameterInfo(self):
         # Input_geodatabase
