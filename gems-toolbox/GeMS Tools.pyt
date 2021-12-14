@@ -45,7 +45,7 @@ class Toolbox(object):
                       ValidateDatabase, DMUtoDocx, RebuildMapUnitPolys]
 
 class AttributeByKeyValues(object):
-    """"\Scripts\GeMS_AttributeByKeyValues_AGP2.py"""
+    """"GeMS_AttributeByKeyValues_AGP2.py"""
     def __init__(self):
         self.label = u'Attribute By Key Values'
         self.description = u'Script to step through an identified subset of feature classes in GeologicMap feature dataset and, for specified values of one or more independent fields, calculate values of dependent fields.'

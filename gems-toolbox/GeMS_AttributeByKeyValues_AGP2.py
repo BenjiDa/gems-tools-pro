@@ -56,7 +56,7 @@ def main(parameters):
     if forceCalc:
         addMsgAndPrint("Forcing the overwriting of existing values")
     
-    # make a dictionary of geodatabase objects = full paths
+    # make a dictionary of {geodatabase objects: full paths}
     gdb_walk = arcpy.da.Walk(gdb)
     gdb_dict = {}
     for workspace, fds, filenames in gdb_walk:
@@ -104,19 +104,29 @@ def main(parameters):
     
     # now work through the tables that are named in the key-value text file
     for fc in fc_val_dict:
-        addMsgAndPrint(
+        addMsgAndPrint(f"Parsing values in {fc}")
         update_fields = update_fields_dict[fc]
         update_val_dict = fc_val_dict[fc]
         if fc in gdb_dict:
             with arcpy.da.UpdateCursor(gdb_dict[fc], update_fields) as cursor:
-                for row in cursor:
-                    # the independent field will be at index row[0] and we can use it as a key the dictionary we just
-                    # retrieved, update_val_dict, to get a list of values for the rest of the fields
+                for i, row in enumerate(cursor):
+                    # the independent field will be at index row[0] and we can use it as a key in the dictionary we just
+                    # retrieved for this particular feature class, update_val_dict, to get a list of values for the rest of the fields
                     update_vals = update_val_dict[row[0].strip()]
                     for n, k in enumerate(update_vals):
-                        # put forceCalc check here seeing if row[n+1] has a value or not
-                        row[n+1] = k
-                    cursor.updateRow(row)
+                        # if forceCalc is true, write the value regardless of what may already be
+                        # in the attribute table
+                        if forceCalc:
+                            row[n+1] = k
+                        # but if forceCalc is false, only write a value if the cell is empty
+                        else:
+                            if row[n+1].strip() is None:
+                                row[n+1] = k
+                    try:
+                        cursor.updateRow(row)
+                    except Exception as error:
+                        addMsgAndPrint(f"Failed to update row {i+1}")
+                        addMsgAndPrint(error)
 
 #########################################
 # if this script is being called from the command line, __name__ gets set to '__main__' and the parameters
