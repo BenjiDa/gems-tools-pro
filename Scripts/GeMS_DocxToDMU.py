@@ -26,6 +26,7 @@ Dependencies
 """
 
 import sys
+import re
 from pathlib import Path
 import copy
 import arcpy
@@ -111,10 +112,17 @@ def parse_text(p_object, doc_list, arc_label, html_label, html_description):
             label = mu
 
         name_age, i = text_runs(p_object, "DMU Unit Name/Age (type style)")
+        if not mu or not name_age:
+            raise ValueError(
+                f"Unit paragraph is missing its label or name character style: {text[:80]!r}"
+            )
 
         # if there are parantheses, we have an age,
         # partition on the first one to get the unit name
-        if name_age.find("(") > 0:
+        if re.search(r"\((?:18|19|20)\d{2}\)$", name_age.strip()):
+            name = name_age
+            age = None
+        elif name_age.find("(") > 0:
             name, x, age = name_age.partition("(")
             # and strip the final ")" character
             age = age.rstrip(")")
@@ -131,9 +139,8 @@ def parse_text(p_object, doc_list, arc_label, html_label, html_description):
                 d_list.append(r.text)
             description = "".join(d_list)
 
-        # remove leading em-dash or double hyphens if they exist
-        description = description.lstrip("—")
-        description = description.lstrip("--")
+        # remove the printed divider between a unit name and its description
+        description = description.lstrip(" \t—–-")
 
     else:
         print(f"Unknown paragraph style '{style}'")
@@ -174,6 +181,52 @@ def sibling_hkey(hkey):
     this_key.append(last_element)
 
     return this_key
+
+
+class HierarchyBuilder:
+    """Assign unique keys from the explicit heading and unit style levels."""
+
+    def __init__(self):
+        self.child_counts = {}
+        self.headings = {}
+        self.units = {}
+
+    def _child(self, parent):
+        parent = tuple(parent)
+        self.child_counts[parent] = self.child_counts.get(parent, 0) + 1
+        return list(parent) + [self.child_counts[parent]]
+
+    def add(self, style):
+        kind = style_dict[style]
+        if kind == "heading":
+            level = int(style[-1])
+            if level > 1 and level - 1 not in self.headings:
+                raise ValueError(f"{style} has no parent heading")
+            parent = self.headings.get(level - 1, [])
+            key = self._child(parent)
+            self.headings = {k: v for k, v in self.headings.items() if k < level}
+            self.headings[level] = key
+            self.units.clear()
+            return key
+        if kind == "unit":
+            level = 1 if style == "DMU Unit 1 (1st after heading)" else int(style[-1])
+            if level == 1:
+                if not self.headings:
+                    raise ValueError(f"{style} has no parent heading")
+                parent = self.headings[max(self.headings)]
+            else:
+                if level - 1 not in self.units:
+                    raise ValueError(f"{style} has no parent unit")
+                parent = self.units[level - 1]
+            key = self._child(parent)
+            self.units = {k: v for k, v in self.units.items() if k < level}
+            self.units[level] = key
+            return key
+        if kind == "headnote":
+            if not self.headings:
+                raise ValueError(f"{style} has no parent heading")
+            return self._child(self.headings[max(self.headings)])
+        raise ValueError(f"{style} does not create a DMU row")
 
 
 def para_props(p_style):
@@ -409,6 +462,42 @@ def main(params):
 
     guf.addMsgAndPrint(versionString)
 
+    guf.addMsgAndPrint(f"Parsing file {manuscript_file}")
+
+    # open document and get a list of paragraphs
+    document = docx.Document(manuscript_file)
+    paras = document.paragraphs
+
+    # The converter accepts a DMU-only document, optionally preceded by its title.
+    if paras and paras[0].text.strip().lower() == "description of map units":
+        paras = paras[1:]
+    paras = [p for p in paras if p.text.strip()]
+    if not paras:
+        raise ValueError("No DMU paragraphs found in the manuscript")
+
+    hierarchy = HierarchyBuilder()
+    doc_list = []
+    for p in paras:
+        style = p.style.name
+        kind = style_dict.get(style)
+        if kind is None:
+            raise ValueError(f"Unknown DMU paragraph style: {style!r} ({p.text[:40]!r})")
+        if kind == "unit text":
+            if not doc_list:
+                raise ValueError("DMU continuation paragraph has no preceding row")
+            paragraph = apply_formatting(p.runs) if html_description else p.text
+            doc_list[-1][6] = f"{doc_list[-1][6]}\n{paragraph}"
+            continue
+        hkey = hierarchy.add(style)
+        mu, label, name, age, description, _ = parse_text(
+            p, doc_list, arc_label, html_label, html_description
+        )
+        doc_list.append([hkey, style, mu, label, name, age, description])
+
+    for line in doc_list:
+        hkey_list = [str(i).zfill(zero_pad) for i in line[0]]
+        line[0] = "-".join(hkey_list)
+
     dmu_table = str(Path(gdb) / "DescriptionOfMapUnits")
     if not arcpy.Exists(dmu_table):
         try:
@@ -417,159 +506,10 @@ def main(params):
             vt = arcpy.ValueTable(3)
             vt.loadFromString("# # DescriptionOfMapUnits")
             gacl.process(gdb, vt)
-        except:
-            arcpy.AddError(
+        except Exception as exc:
+            raise RuntimeError(
                 f"DescriptionOfMapUnits table could not be found and could not be created in {gdb}"
-            )
-            sys.exit()
-
-    guf.addMsgAndPrint(f"Parsing file {manuscript_file}")
-
-    # open document and get a list of paragraphs
-    document = docx.Document(manuscript_file)
-    paras = document.paragraphs
-
-    # build a list of doc_list items
-    # [hkey, style, label, name, age, description]
-    # avoid first paragraph if it is just "Description Of Map Units"
-    if paras[0].text.strip().lower() == "description of map units":
-        paras = paras[1:]
-
-    # set up variables for initial entry in list
-    hkeys = [[1]]
-    hkey_dict = {}
-    style_1 = paras[0].style.name
-    hkey_dict[str(hkeys[0])] = style_1
-    doc_list = []
-    mu, label, name, age, description, doc_list = parse_text(
-        paras[0], doc_list, arc_label, html_label, html_description
-    )
-    doc_list.append([[1], style_1, mu, label, name, age, description])
-
-    # prepare to iterate through the rest of the document paragraphs
-    # last_head_level = 1
-    arcpy.AddMessage(f"Evaluating the following paragraphs starting with:")
-
-    paras = [p for p in paras if not p.text.isspace()]
-    for p in paras[1:]:
-        arcpy.AddMessage(f"  {p.text[0:15]}")
-        style = p.style.name
-
-        if not style_dict[style] == "unit text":
-            # determine the HierarchyKey
-            # each of the following cases compares the style of the current paragraph
-            # to the style of the previous paragraph
-            last_hkey = hkeys[-1]
-            current_type, current_rank = para_props(style)
-            last_type, last_rank = para_props(hkey_dict[str(last_hkey)])
-
-            # paragraph types are the same, rank is the same
-            # current is sibling to previous
-            if (current_type, current_rank) == (last_type, last_rank):
-                this_hkey = sibling_hkey(last_hkey)
-
-            # paragraph types are the same, the current rank is lower
-            # than previous (trailing number is > than previous); current is child to previous
-            if current_type == last_type and current_rank > last_rank:
-                this_hkey = child_hkey(last_hkey)
-
-            # headnotes are children to previous headings
-            if current_type == "headnote" and last_type == "heading":
-                this_hkey = child_hkey(last_hkey)
-
-            # level2 heading
-            # with no unit under the first level2 heading
-            if current_type == "heading" and last_type == "headnote":
-                this_hkey = sibling_hkey(last_hkey)
-
-            # unit is always child to previous heading
-            if current_type == "unit" and last_type == "heading":
-                this_hkey = child_hkey(last_hkey)
-
-            # unit is always sibling to previous text
-            if current_type == "unit" and last_type in ("unit text", "headnote"):
-                this_hkey = sibling_hkey(last_hkey)
-
-            # text is always child to previous heading
-            if current_type == "unit text" and last_type in ("unit", "heading"):
-                this_hkey = child_hkey(last_hkey)
-
-            # paragraph types are the same but the current is one rank higher than the
-            # previous (trailing number is lower than previous); current is sibling to an
-            # unknown sibling back in the list. Should only be true for unit paragraphs.
-            # Text paragraphs are all the same rank and there should never be a higher rank
-            # heading that immediately follows a lower rank heading
-            if current_type == last_type and current_rank < last_rank:
-                for n in reversed(hkeys):
-                    n_type, n_rank = para_props(hkey_dict[str(n)])
-                    if current_type == n_type and current_rank == n_rank:
-                        this_hkey = sibling_hkey(n)
-                        break
-
-            # more complex case where the current paragraph is a heading and the
-            # previous is a unit. The two will be siblings only if the last heading seen
-            # is of a higher rank
-            if current_type == "heading" and last_type in ("unit", "unit text"):
-                heading_above_unit = False
-                for n in reversed(hkeys):
-                    n_style, n_rank = para_props(hkey_dict[str(n)])
-                    # Special case where DMUHead2 follows DMUHead1Back
-                    # though numerically of different ranks, they are siblings
-                    if (
-                        hkey_dict[str(n)] == "DMU-Heading1"
-                        and p.style.name == "DMU-Heading2"
-                    ):
-                        this_hkey = [2]
-                        heading_above_unit = True
-                        break
-
-                    # case where the last heading seen is the same rank as current
-                    if n_style == "heading" and current_rank == n_rank:
-                        this_hkey = sibling_hkey(n)
-                        heading_above_unit = True
-                        break
-
-                    # case where the last heading seen is less than rank of current
-                    if n_style == "heading" and current_rank > n_rank:
-                        # there is no younger sibling heading before getting back to a
-                        # parent heading, so now look for the first DMU1 above the current heading
-                        heading_above_unit = True
-                        for n in reversed(hkeys):
-                            if hkey_dict[str(n)] == "DMU Unit 1":
-                                this_hkey = sibling_hkey(n)
-                                break
-                        break
-
-                # case where there is no younger heading in the document,
-                # that is, no Description of Map Units heading
-                if heading_above_unit == False:
-                    for n in reversed(hkeys):
-                        if hkey_dict[str(n)] == "DMU Unit 1":
-                            this_hkey = sibling_hkey(n)
-                            break
-
-                # last_head_level = current_rank
-
-                # append this hkey to the hkeys list
-                hkeys.append(this_hkey)
-                # add this hkey and style to the dictionary
-                hkey_dict[str(this_hkey)] = p.style.name
-
-            # append this hkey to the hkeys list
-            hkeys.append(this_hkey)
-            hkey_dict[str(this_hkey)] = style
-            if not p.text == "":
-                mu, label, name, age, desc, doc_list = parse_text(
-                    p, doc_list, arc_label, html_label, html_description
-                )
-            doc_list.append([this_hkey, style, mu, label, name, age, desc])
-        else:
-            paragraph = apply_formatting(p.runs)
-            doc_list[-1][6] = f"{doc_list[-1][6]}\n{paragraph}"
-
-    for line in doc_list:
-        hkey_list = [str(i).zfill(zero_pad) for i in line[0]]
-        line[0] = "-".join(hkey_list)
+            ) from exc
 
     # for line in doc_list:
     #     arcpy.AddMessage(line)

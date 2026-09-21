@@ -161,7 +161,7 @@ def add_geomaterial(db, out_path, padding):
     # 1. GeoMaterialDict is requested or
     # 2. if a version of MapUnitPolys (with GeoMaterial field) is requested
     arcpy.env.workspace = db
-    if not "GeoMaterialDict" in arcpy.ListTables(db):
+    if not arcpy.Exists(str(Path(db) / "GeoMaterialDict")):
         arcpy.AddMessage("Creating GeoMaterialDict")
         geomat_csv = str(Path(__file__).parent / "GeoMaterialDict.csv")
         arcpy.TableToTable_conversion(geomat_csv, out_path, "GeoMaterialDict")
