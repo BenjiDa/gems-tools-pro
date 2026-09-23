@@ -13,10 +13,10 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import Counter, defaultdict
-from datetime import datetime
 from pathlib import Path
 import re
 import sys
+import time
 
 
 REQUIRED_COLUMNS = {
@@ -30,23 +30,30 @@ URL_RE = re.compile(r"https?://[^\s]+")
 
 
 def message(text):
-    print(text)
     try:
         import arcpy
 
         arcpy.AddMessage(text)
     except Exception:
-        pass
+        print(text)
 
 
 def warning(text):
-    print(f"WARNING: {text}")
     try:
         import arcpy
 
         arcpy.AddWarning(text)
     except Exception:
-        pass
+        print(f"WARNING: {text}")
+
+
+def error(text):
+    try:
+        import arcpy
+
+        arcpy.AddError(text)
+    except Exception:
+        print(f"ERROR: {text}", file=sys.stderr)
 
 
 def extract_url(citation):
@@ -422,7 +429,7 @@ def main(argv=None):
     if args.audit:
         audit_path = Path(args.audit)
     else:
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        stamp = time.strftime("%Y%m%d_%H%M%S")
         audit_path = csv_path.with_name(f"DataSource_cleanup_audit_{stamp}.csv")
     write_audit(audit_path, mappings, expected, actual, source_rows, mode)
     message(f"Audit written to: {audit_path}")
@@ -453,11 +460,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        try:
-            import arcpy
-
-            arcpy.AddError(str(exc))
-        except Exception:
-            pass
+        error(str(exc))
         sys.exit(1)
