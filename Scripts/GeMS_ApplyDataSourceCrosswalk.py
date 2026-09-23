@@ -165,23 +165,54 @@ def get_feature_counts(arcpy, feature_class):
     return counts
 
 
-def validate_counts(actual, expected, allow_mismatch):
+def validate_counts(actual, expected, canonical_ids, allow_mismatch):
+    """Confirm that the CSV and geodatabase describe the same feature set.
+
+    Individual source counts may differ after a user has already reassigned some
+    features or after this script has been run once. Canonical DAS identifiers
+    are therefore valid alongside the legacy identifiers listed in the CSV.
+    The total feature count must still match, and every current identifier must
+    be represented by either a CSV row or a planned canonical DataSources row.
+    """
     problems = []
-    for raw_id in sorted(set(actual).union(expected), key=str.casefold):
-        actual_count = actual.get(raw_id, 0)
-        expected_count = expected.get(raw_id)
-        if expected_count is None:
-            problems.append(f"{raw_id!r} occurs {actual_count} time(s) but is absent from CSV")
-        elif actual_count != expected_count:
-            problems.append(
-                f"{raw_id!r}: CSV count {expected_count}, geodatabase count {actual_count}"
-            )
+    expected_total = sum(expected.values())
+    actual_total = sum(actual.values())
+    if actual_total != expected_total:
+        problems.append(
+            f"CSV total {expected_total}, geodatabase total {actual_total}"
+        )
+
+    known_ids = set(expected).union(canonical_ids)
+    unexpected = sorted(set(actual).difference(known_ids), key=str.casefold)
+    for source_id in unexpected:
+        problems.append(
+            f"{source_id!r} occurs {actual[source_id]} time(s) but is neither a "
+            "legacy CSV identifier nor a planned canonical DAS identifier"
+        )
+
     if problems:
-        text = "Feature counts do not match:\n  " + "\n  ".join(problems)
+        text = "Feature inventory does not match:\n  " + "\n  ".join(problems)
         if allow_mismatch:
             warning(text)
         else:
-            raise ValueError(text + "\nUse --allow-count-mismatch only after reviewing the differences.")
+            raise ValueError(
+                text
+                + "\nUse --allow-count-mismatch only after reviewing the differences."
+            )
+
+    changed_counts = []
+    for raw_id in sorted(expected, key=str.casefold):
+        actual_count = actual.get(raw_id, 0)
+        if actual_count != expected[raw_id]:
+            changed_counts.append(
+                f"{raw_id!r}: CSV snapshot {expected[raw_id]}, current {actual_count}"
+            )
+    if changed_counts:
+        warning(
+            "Individual source counts changed since the CSV inventory was created. "
+            "This is expected after manual reassignment or a prior script run:\n  "
+            + "\n  ".join(changed_counts)
+        )
 
 
 def existing_sources(arcpy, table):
@@ -329,7 +360,10 @@ def parse_args(argv=None):
     parser.add_argument(
         "--allow-count-mismatch",
         action="store_true",
-        help="Continue when current feature counts differ from the XML-derived CSV.",
+        help=(
+            "Continue when the total feature count differs or current source identifiers "
+            "are absent from the CSV and canonical DAS list."
+        ),
     )
     parser.add_argument("--audit", help="Optional output audit CSV path")
     return parser.parse_args(argv)
@@ -362,7 +396,7 @@ def main(argv=None):
     check_lengths(source_fields, source_rows)
 
     actual = get_feature_counts(arcpy, feature_class)
-    validate_counts(actual, expected, args.allow_count_mismatch)
+    validate_counts(actual, expected, set(source_rows), args.allow_count_mismatch)
     existing = existing_sources(arcpy, sources_table)
     inserts, updates, unchanged = compare_sources(existing, source_rows)
 
@@ -375,10 +409,12 @@ def main(argv=None):
     message(f"DataSources rows that conflict: {len(updates)}")
     message(f"DataSources rows already identical: {len(unchanged)}")
     for raw_id in unresolved:
-        warning(
-            f"{raw_id!r} has no Canonical_SourceID and will remain unchanged "
-            f"({actual.get(raw_id, 0)} feature(s))"
-        )
+        remaining = actual.get(raw_id, 0)
+        if remaining:
+            warning(
+                f"{raw_id!r} has no Canonical_SourceID and will remain unchanged "
+                f"({remaining} feature(s))"
+            )
     for source_id, values in source_rows.items():
         if "find citation" in values["Source"].casefold():
             warning(f"{source_id} still contains an incomplete citation: {values['Source']}")
