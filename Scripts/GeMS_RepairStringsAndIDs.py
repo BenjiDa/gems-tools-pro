@@ -1,9 +1,11 @@
-"""Repair blank text values and primary IDs in a GeMS geodatabase.
+"""Repair reported blank text values and primary IDs in a GeMS geodatabase.
 
-The script scans non-annotation feature classes and tables. It converts empty
-or whitespace-only strings to NULL, trims leading and trailing whitespace,
-and repairs only missing or duplicated values in each <Dataset>_ID field.
-Existing unique primary IDs are preserved. The default mode is a dry run.
+By default, the script is limited to the datasets and fields reported by the
+current Healdsburg GeMS validation. It converts empty or whitespace-only
+strings to NULL, trims leading and trailing whitespace, and repairs only
+missing or duplicated values in each selected <Dataset>_ID field. Existing
+unique primary IDs are preserved. Use --all-datasets only for a deliberate
+database-wide cleanup. The default mode is a dry run.
 """
 
 from __future__ import annotations
@@ -49,6 +51,27 @@ ID_PREFIXES = {
     "RepurposedSymbols": "RPS",
     "Stations": "STA",
     "StandardLithology": "STL",
+}
+
+# Scope from the 2026-09-23 Healdsburg validation report. Keeping this scope
+# explicit prevents empty optional fields in intermediate datasets from being
+# altered merely because they are stored as empty strings.
+DEFAULT_STRING_FIELDS = {
+    "ContactsAndFaults": {"Label", "Notes"},
+    "GeologicLines": {"Label"},
+    "CSAContactsAndFaults": {"Notes"},
+    "CSAGeologicLines": {"Label"},
+}
+DEFAULT_ID_DATASETS = {
+    "CMUPoints",
+    "ContactsAndFaults",
+    "MapUnitPoints",
+    "CartographicLines",
+    "DataSourcePolys",
+    "CMULines",
+    "MapUnitPolys",
+    "OrientationPoints",
+    "GeologicLines",
 }
 
 BAD_ID_TEXT = {"none", "null", "<null>"}
@@ -176,21 +199,45 @@ def plan_primary_ids(rows, dataset):
     return sorted(repairs, key=lambda item: item[0])
 
 
-def build_plan(arcpy, gdb):
+def build_plan(arcpy, gdb, all_datasets=False):
     plans = []
     dataset_paths = {}
     for rel, path, dataset, oid_field in iter_datasets(arcpy, gdb):
+        if not all_datasets and dataset not in (
+            set(DEFAULT_STRING_FIELDS) | DEFAULT_ID_DATASETS
+        ):
+            continue
         dataset_paths[rel] = {"path": path, "oid_field": oid_field}
         fields = field_map(arcpy, path)
         id_name = f"{dataset}_ID"
         id_info = fields.get(id_name.casefold())
-        primary_key = id_info.name if id_info and id_info.type == "String" else None
+        primary_key = (
+            id_info.name
+            if id_info
+            and id_info.type == "String"
+            and (all_datasets or dataset in DEFAULT_ID_DATASETS)
+            else None
+        )
 
-        string_fields = [
-            field.name
-            for field in fields.values()
-            if field.type == "String" and field.editable and field.name != primary_key
-        ]
+        if all_datasets:
+            string_fields = [
+                field.name
+                for field in fields.values()
+                if field.type == "String"
+                and field.editable
+                and field.name != primary_key
+            ]
+        else:
+            selected = {
+                name.casefold() for name in DEFAULT_STRING_FIELDS.get(dataset, set())
+            }
+            string_fields = [
+                field.name
+                for field in fields.values()
+                if field.name.casefold() in selected
+                and field.type == "String"
+                and field.editable
+            ]
         if string_fields:
             with arcpy.da.SearchCursor(path, [oid_field] + string_fields) as cursor:
                 for row in cursor:
@@ -312,6 +359,14 @@ def parse_args(argv=None):
     parser.add_argument("gdb", help="Path to the copied file geodatabase")
     parser.add_argument("--audit", help="Optional audit CSV path")
     parser.add_argument(
+        "--all-datasets",
+        action="store_true",
+        help=(
+            "Scan every non-annotation dataset and editable string field. "
+            "Without this flag, use the validation-report cleanup scope."
+        ),
+    )
+    parser.add_argument(
         "--apply",
         action="store_true",
         help="Commit changes. Without this flag the script only reports them.",
@@ -330,7 +385,7 @@ def main(argv=None):
     if not arcpy.Exists(gdb):
         raise ValueError(f"Geodatabase does not exist: {gdb}")
 
-    plans, dataset_paths = build_plan(arcpy, gdb)
+    plans, dataset_paths = build_plan(arcpy, gdb, args.all_datasets)
     mode = "APPLY" if args.apply else "DRY RUN"
     if args.audit:
         audit_path = Path(args.audit)
@@ -341,6 +396,10 @@ def main(argv=None):
 
     counts = Counter(plan["Action"] for plan in plans)
     message(arcpy, f"Mode: {mode}")
+    message(
+        arcpy,
+        "Scope: " + ("ALL DATASETS" if args.all_datasets else "VALIDATION REPORT"),
+    )
     message(arcpy, f"Datasets scanned: {len(dataset_paths)}")
     message(arcpy, f"Blank strings to convert to NULL: {counts['BLANK_TO_NULL']}")
     message(arcpy, f"Nonempty strings to trim: {counts['TRIM_TEXT']}")
