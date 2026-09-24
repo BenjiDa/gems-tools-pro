@@ -95,7 +95,11 @@ def iter_datasets(arcpy, gdb):
             desc = arcpy.Describe(path)
             if getattr(desc, "featureType", "") == "Annotation":
                 continue
-            yield relative_path(gdb, path), path, name
+            oid_field = getattr(desc, "OIDFieldName", "")
+            if not oid_field:
+                message(arcpy, f"Skipping dataset without an ObjectID field: {path}")
+                continue
+            yield relative_path(gdb, path), path, name, oid_field
 
 
 def field_map(arcpy, path):
@@ -175,8 +179,8 @@ def plan_primary_ids(rows, dataset):
 def build_plan(arcpy, gdb):
     plans = []
     dataset_paths = {}
-    for rel, path, dataset in iter_datasets(arcpy, gdb):
-        dataset_paths[rel] = path
+    for rel, path, dataset, oid_field in iter_datasets(arcpy, gdb):
+        dataset_paths[rel] = {"path": path, "oid_field": oid_field}
         fields = field_map(arcpy, path)
         id_name = f"{dataset}_ID"
         id_info = fields.get(id_name.casefold())
@@ -188,7 +192,7 @@ def build_plan(arcpy, gdb):
             if field.type == "String" and field.editable and field.name != primary_key
         ]
         if string_fields:
-            with arcpy.da.SearchCursor(path, ["OID@"] + string_fields) as cursor:
+            with arcpy.da.SearchCursor(path, [oid_field] + string_fields) as cursor:
                 for row in cursor:
                     oid = row[0]
                     for index, field in enumerate(string_fields, start=1):
@@ -222,7 +226,7 @@ def build_plan(arcpy, gdb):
                             )
 
         if primary_key:
-            with arcpy.da.SearchCursor(path, ["OID@", primary_key]) as cursor:
+            with arcpy.da.SearchCursor(path, [oid_field, primary_key]) as cursor:
                 id_rows = list(cursor)
             for oid, old, new, action in plan_primary_ids(id_rows, dataset):
                 if id_info.length and len(new) > id_info.length:
@@ -280,9 +284,10 @@ def apply_plan(arcpy, gdb, plans, dataset_paths):
     editor.startOperation()
     try:
         for rel, fields in grouped.items():
-            path = dataset_paths[rel]
+            path = dataset_paths[rel]["path"]
+            oid_field = dataset_paths[rel]["oid_field"]
             field_names = sorted(fields, key=str.casefold)
-            with arcpy.da.UpdateCursor(path, ["OID@"] + field_names) as cursor:
+            with arcpy.da.UpdateCursor(path, [oid_field] + field_names) as cursor:
                 for row in cursor:
                     oid = row[0]
                     row_changed = False
