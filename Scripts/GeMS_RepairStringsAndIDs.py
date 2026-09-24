@@ -75,6 +75,7 @@ DEFAULT_ID_DATASETS = {
 }
 
 BAD_ID_TEXT = {"none", "null", "<null>"}
+BAD_NULL_TEXT = {"<null>", "&ltnull&gt"}
 AUDIT_FIELDS = (
     "Mode",
     "Action",
@@ -247,7 +248,7 @@ def build_plan(arcpy, gdb, all_datasets=False):
                         if old is None:
                             continue
                         new = str(old).strip()
-                        if not new:
+                        if not new or new.casefold() in BAD_NULL_TEXT:
                             plans.append(
                                 {
                                     "Action": "BLANK_TO_NULL",
@@ -406,6 +407,18 @@ def main(argv=None):
     message(arcpy, f"Primary IDs to trim: {counts['TRIM_PRIMARY_ID']}")
     message(arcpy, f"Missing primary IDs to generate: {counts['GENERATE_MISSING_ID']}")
     message(arcpy, f"Duplicated primary IDs to replace: {counts['REPLACE_DUPLICATE_ID']}")
+    id_actions = {
+        "GENERATE_MISSING_ID",
+        "REPLACE_DUPLICATE_ID",
+        "TRIM_PRIMARY_ID",
+    }
+    id_counts = Counter(
+        plan["Dataset_Path"] for plan in plans if plan["Action"] in id_actions
+    )
+    if id_counts:
+        message(arcpy, "Primary-ID repairs by dataset:")
+        for dataset_path, count in sorted(id_counts.items(), key=lambda item: item[0].casefold()):
+            message(arcpy, f"  {dataset_path}: {count}")
     message(arcpy, f"Audit written to: {audit_path}")
 
     if not args.apply:
